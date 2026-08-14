@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AudioHarmonix - DJ Audio Analyzer & Harmonic Metadata Studio</title>
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- CSS Styles -->
+  <link rel="stylesheet" href="src/index.css">
+</head>
+<body class="bg-dark text-light">
+
+  <div id="app" class="app-container">
+    
+    <!-- Top Header -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-logo">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#00e5ff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2v20M17 5v14M22 9v6M7 5v14M2 9v6"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h1 class="brand-title">AudioHarmonix</h1>
+          <span class="brand-subtitle">HARMONIC STUDIO</span>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <button id="btn-shortcuts" class="btn btn-secondary" title="DJ Keyboard Shortcuts (Press ? or F1)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M6 16h12"/></svg>
+          Shortcuts
+        </button>
+
+        <button id="btn-import" class="btn btn-secondary">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+          Import Audio File
+        </button>
+
+        <button id="btn-batch" class="btn btn-primary">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Analyze All (Batch)
+        </button>
+
+        <button id="btn-export-xml" class="btn btn-accent">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+          Export Rekordbox XML
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="app-main">
+      
+      <!-- Filter & Search Toolbar -->
+      <section class="toolbar">
+        <div class="search-box">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" id="search-input" placeholder="Search track, artist, key (e.g. 8A, 124bpm)...">
+        </div>
+
+        <div class="filter-controls">
+          <div class="control-group">
+            <label>Camelot Key:</label>
+            <select id="filter-camelot">
+              <option value="">All Keys (24)</option>
+              <optgroup label="Minor Keys (A)">
+                <option value="1A">1A - G# Minor (Abm)</option>
+                <option value="2A">2A - D# Minor (Ebm)</option>
+                <option value="3A">3A - A# Minor (Bbm)</option>
+                <option value="4A">4A - F Minor (Fm)</option>
+                <option value="5A">5A - C Minor (Cm)</option>
+                <option value="6A">6A - G Minor (Gm)</option>
+                <option value="7A">7A - D Minor (Dm)</option>
+                <option value="8A">8A - A Minor (Am)</option>
+                <option value="9A">9A - E Minor (Em)</option>
+                <option value="10A">10A - B Minor (Bm)</option>
+                <option value="11A">11A - F# Minor (F#m)</option>
+                <option value="12A">12A - C# Minor (C#m)</option>
+              </optgroup>
+              <optgroup label="Major Keys (B)">
+                <option value="1B">1B - B Major (B)</option>
+                <option value="2B">2B - F# Major (F#)</option>
+                <option value="3B">3B - C# Major (Db)</option>
+                <option value="4B">4B - G# Major (Ab)</option>
+                <option value="5B">5B - D# Major (Eb)</option>
+                <option value="6B">6B - A# Major (Bb)</option>
+                <option value="7B">7B - F Major (F)</option>
+                <option value="8B">8B - C Major (C)</option>
+                <option value="9B">9B - G Major (G)</option>
+                <option value="10B">10B - D Major (D)</option>
+                <option value="11B">11B - A Major (A)</option>
+                <option value="12B">12B - E Major (E)</option>
+              </optgroup>
+            </select>
+            <button id="btn-toggle-camelot-wheel" class="btn btn-secondary" style="padding:4px 10px; font-size:12px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="9"/><line x1="12" y1="15" x2="12" y2="22"/></svg>
+              Wheel Grid
+            </button>
+          </div>
+
+          <div class="control-group">
+            <label>Min Energy:</label>
+            <select id="filter-energy">
+              <option value="1">All (1+)</option>
+              <option value="5">Medium (5+)</option>
+              <option value="7">High (7+)</option>
+              <option value="9">Peak (9+)</option>
+            </select>
+          </div>
+
+          <div class="stats-badge">
+            <span id="track-count">0 Tracks</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Track Library Table -->
+      <section class="library-container">
+        <div class="table-wrapper">
+          <table class="track-table">
+            <thead>
+              <tr>
+                <th width="4%">#</th>
+                <th width="28%">Track Name & Artist</th>
+                <th width="12%">BPM & Grid</th>
+                <th width="18%">Key (Camelot / Scale)</th>
+                <th width="16%">Energy Score</th>
+                <th width="10%">Confidence</th>
+                <th width="12%">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="track-table-body">
+              <!-- Dynamically rendered rows -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Waveform Visualizer & Inspector Panel -->
+      <section class="waveform-panel">
+        <!-- Minimalist Centered Splitter / Drawer Handle -->
+        <div class="panel-divider-handle-strip">
+          <button id="btn-toggle-waveform-collapse" class="panel-drawer-pill-btn" title="Toggle Waveform Panel (Key W)" aria-label="Toggle Waveform Panel Visibility">
+            <svg class="waveform-chevron-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="waveform-header">
+          <div class="track-info-display">
+            <span id="selected-title" class="title">Select a track to preview waveform</span>
+            <div class="track-meta-row">
+              <!-- BPM Interactive Live Editor -->
+              <div class="bpm-control-box" title="Manual BPM & Beatgrid Calibration">
+                <span class="bpm-label">BPM:</span>
+                <input type="number" id="input-bpm" class="input-bpm" step="0.01" min="40" max="250" value="124.00">
+                <div class="bpm-btn-group">
+                  <button id="btn-bpm-half" class="btn-bpm-mod" title="Divide BPM by 2 (/2)">/2</button>
+                  <button id="btn-bpm-double" class="btn-bpm-mod" title="Multiply BPM by 2 (x2)">x2</button>
+                  <button id="btn-bpm-tap" class="btn-bpm-mod btn-bpm-tap" title="Tap rhythm to calculate BPM (Tap Tempo)">TAP</button>
+                </div>
+              </div>
+
+              <!-- Grid 1.1 First Beat Alignment Box -->
+              <div class="grid-align-control-box" title="Align Beatgrid 1.1 to current needle position or nudge grid">
+                <button id="btn-set-first-beat" class="btn-grid-mod" title="Set First Beat (1.1) of bar to current needle position (Shift+M)">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="2" x2="12" y2="22"/><polygon points="12 2 19 8 5 8"/></svg>
+                  <span>Set 1.1</span>
+                </button>
+                <div class="grid-nudge-group">
+                  <button id="btn-grid-nudge-left" class="btn-grid-nudge" title="Nudge entire Beatgrid left by 5ms (<)">◀</button>
+                  <button id="btn-grid-nudge-right" class="btn-grid-nudge" title="Nudge entire Beatgrid right by 5ms (>)">▶</button>
+                </div>
+              </div>
+
+              <span id="selected-meta" class="meta">--- Key | --- Energy</span>
+            </div>
+          </div>
+
+          <div class="waveform-toolbar-controls">
+            <!-- Beatgrid Lines Toggle -->
+            <button id="btn-toggle-beatgrid" class="btn btn-secondary btn-toolbar active" title="Toggle Beatgrid & Phrase Markers (Key B)">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="3" x2="4" y2="21"/><line x1="10" y1="3" x2="10" y2="21"/><line x1="16" y1="3" x2="16" y2="21"/><line x1="22" y1="3" x2="22" y2="21"/></svg>
+              Beatgrid
+            </button>
+
+            <!-- Snap to Grid Toggle -->
+            <button id="btn-toggle-snap" class="btn btn-secondary btn-toolbar active" title="Magnetic Snap to Nearest Beat (Key S)">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+              Snap
+            </button>
+
+            <!-- Zoom Controls -->
+            <div class="zoom-controls">
+              <button id="btn-zoom-out" class="btn-zoom" title="Zoom Out (-)" aria-label="Zoom Out">−</button>
+              <span id="zoom-level-label" class="zoom-label" aria-live="polite">1x</span>
+              <button id="btn-zoom-in" class="btn-zoom" title="Zoom In (+)" aria-label="Zoom In">+</button>
+              <button id="btn-zoom-reset" class="btn-zoom-reset" title="Reset Zoom (0)" aria-label="Reset Zoom">1x</button>
+            </div>
+
+            <!-- Audio Controls -->
+            <div class="audio-controls">
+              <button id="btn-play" class="btn-icon btn-play" title="Play / Pause Audio (Spacebar)" aria-label="Play or Pause Audio">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              </button>
+              <span id="time-display" class="time-code" aria-live="off">00:00 / 00:00</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Collapsible Waveform Body Container -->
+        <div id="waveform-collapsible-body" class="waveform-collapsible-body">
+          <div class="waveform-workspace">
+            <div id="waveform-canvas-container" class="waveform-canvas-container">
+              <div id="waveform-scroll-wrapper" class="waveform-scroll-wrapper">
+                <canvas id="waveform-canvas" width="900" height="110"></canvas>
+                <div id="playhead" class="playhead"></div>
+                <div id="cue-overlay" class="cue-overlay"></div>
+              </div>
+            </div>
+
+            <!-- Camelot Harmonic Wheel Visualizer -->
+            <div class="camelot-wheel-box">
+              <div class="wheel-title">HARMONIC COMPATIBILITY (CAMELOT WHEEL)</div>
+              <div id="camelot-compat-badges" class="compat-badges">
+                <span class="compat-badge match" id="badge-current">Current: ---</span>
+                <span class="compat-badge relative" id="badge-relative">Relative: ---</span>
+                <span class="compat-badge subdom" id="badge-subdom">Subdominant: ---</span>
+                <span class="compat-badge dom" id="badge-dom">Dominant: ---</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="waveform-legend">
+            <span class="legend-item low"><span class="dot"></span> Sub & Bass (20-250Hz)</span>
+            <span class="legend-item mid"><span class="dot"></span> Vocals & Mids (250-4kHz)</span>
+            <span class="legend-item high"><span class="dot"></span> Highs & Percussion (4k-11kHz)</span>
+          </div>
+
+          <!-- HotCue Studio Panel -->
+          <div id="hotcue-editor-panel" class="hotcue-editor-panel">
+            <div class="hotcue-editor-header">
+              <div class="hotcue-editor-title">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                </svg>
+                <span>HOTCUE STUDIO</span>
+              </div>
+              <div class="hotcue-editor-actions">
+                <button id="btn-add-cue-playhead" class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px;" title="Add HotCue at current playhead position (Key M)">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  Add Cue at Playhead
+                </button>
+                <button id="btn-save-teach-ai" class="btn btn-primary btn-save-cues" style="padding: 4px 12px; font-size: 12px;" title="Save HotCues and persist grid markers">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                  <span>Save HotCues</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Dynamic HotCue Pills List -->
+            <div id="hotcue-pills-container" class="hotcue-pills-container">
+              <span class="no-cues-text">Select a track from your library to inspect waveform and manage HotCues.</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- Bottom Status Bar -->
+    <footer class="app-footer">
+      <div class="status-indicator">
+        <span class="status-dot green"></span>
+        <span id="status-text">Ready | Harmonic Engine Online</span>
+      </div>
+
+      <div id="batch-progress-container" class="batch-progress-box hidden">
+        <span id="batch-speed">0.0 tracks/sec</span>
+        <div class="progress-bar-outer">
+          <div id="batch-progress-inner" class="progress-bar-inner" style="width: 0%;"></div>
+        </div>
+        <span id="batch-count">0 / 0</span>
+      </div>
+    </footer>
+
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- Delete Confirmation Modal -->
+  <div id="modal-delete-confirm" class="modal-backdrop hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 style="color:#ff4081; display:flex; align-items:center; gap:8px;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ff4081" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          Confirm Track Deletion
+        </h3>
+        <button id="btn-close-delete-modal" class="btn-close" aria-label="Close Delete Modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:14px; color:var(--text-main); margin-bottom:10px;">
+          Are you sure you want to remove <strong id="delete-track-title-text" style="color:#00e5ff;">"track_name.mp3"</strong> from your library?
+        </p>
+        <p style="font-size:12px; color:var(--text-muted);">
+          This action will delete its harmonic analysis, BPM grid, and cue points from your local AudioHarmonix database.
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-cancel-delete" class="btn btn-secondary">Cancel</button>
+        <button id="btn-confirm-delete" class="btn" style="background:#ff1744; color:#fff; font-weight:700; box-shadow: 0 0 12px rgba(255,23,68,0.4);">
+          Yes, Delete Track
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Interactive Camelot Wheel Visual Picker Modal -->
+  <div id="modal-camelot-picker" class="modal-backdrop hidden">
+    <div class="modal-card modal-large">
+      <div class="modal-header">
+        <h3>Interactive Camelot Wheel Grid (24 Harmonic Keys)</h3>
+        <button id="btn-close-camelot-modal" class="btn-close" aria-label="Close Camelot Wheel Modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="margin-bottom:12px;">Click any key to filter your library by harmonic compatibility:</p>
+        
+        <div class="camelot-grid-wrapper">
+          <div class="grid-row-header">MINOR KEYS (INNER RING - A)</div>
+          <div id="grid-minor-keys" class="camelot-grid">
+            <!-- 1A to 12A populated by JS -->
+          </div>
+
+          <div class="grid-row-header" style="margin-top:16px;">MAJOR KEYS (OUTER RING - B)</div>
+          <div id="grid-major-keys" class="camelot-grid">
+            <!-- 1B to 12B populated by JS -->
+          </div>
+        </div>
+
+      </div>
+      <div class="modal-footer">
+        <button id="btn-clear-camelot-filter" class="btn btn-secondary">Clear Key Filter</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Import Audio Modal -->
+  <div id="modal-import" class="modal-backdrop hidden">
+    <div class="modal-card modal-large">
+      <div class="modal-header">
+        <h3>Import & Analyze Audio File</h3>
+        <button id="btn-close-import-modal" class="btn-close" aria-label="Close Import Modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        
+        <!-- File Dropzone / Select -->
+        <div id="dropzone" class="dropzone">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+          <p class="drop-title">Drag & drop audio files here or click to select</p>
+          <span class="drop-sub">Supports MP3, WAV, FLAC, M4A, AIFF</span>
+          <input type="file" id="file-picker" accept="audio/*" class="hidden">
+        </div>
+
+        <div class="divider"><span>OR ENTER FILE PATH ON DISK</span></div>
+
+        <!-- Manual File Path Input -->
+        <div class="input-group">
+          <input type="text" id="import-path-input" placeholder="e.g. test_sample.mp3 or C:/Music/track.mp3">
+          <button id="btn-run-single-import" class="btn btn-primary">Analyze File</button>
+        </div>
+
+        <!-- Discovered Local Audio Files -->
+        <div class="discovered-files-box">
+          <label>Detected Audio Files on Disk:</label>
+          <div id="discovered-files-list" class="files-list">
+            <!-- Rendered dynamically -->
+          </div>
+        </div>
+
+        <!-- Live Analysis Spinner & Progress Card -->
+        <div id="import-analysis-card" class="analysis-status-card hidden">
+          <div class="spinner"></div>
+          <div class="analysis-status-info">
+            <h4 id="import-status-title">Analyzing test_sample.mp3...</h4>
+            <p id="import-status-step">Running CQT Spectrum & Neural Key Classifier...</p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Batch Analysis Modal -->
+  <div id="modal-batch" class="modal-backdrop hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Multi-Threaded Library Batch Analysis</h3>
+        <button id="btn-close-batch-modal" class="btn-close" aria-label="Close Batch Modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p>Analyzes all un-processed audio files in parallel using background worker threads.</p>
+
+        <div class="batch-live-progress">
+          <div class="progress-info">
+            <span id="batch-modal-file">Ready to start...</span>
+            <span id="batch-modal-pct">0%</span>
+          </div>
+          <div class="progress-bar-outer large">
+            <div id="batch-modal-progress-bar" class="progress-bar-inner" style="width: 0%;"></div>
+          </div>
+          <div class="batch-stats-row">
+            <span id="batch-modal-count">0 / 0 tracks</span>
+            <span id="batch-modal-speed">0.0 tracks/sec</span>
+            <span id="batch-modal-eta">ETA: --s</span>
+          </div>
+        </div>
+
+      </div>
+      <div class="modal-footer">
+        <button id="btn-start-batch" class="btn btn-primary">Start Batch Analysis</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Export Rekordbox Modal -->
+  <div id="modal-export" class="modal-backdrop hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Export Rekordbox XML</h3>
+        <button id="btn-close-export-modal" class="btn-close" aria-label="Close Export Modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p>Export all analyzed tracks, BPM grids, Camelot keys, and HotCue points to standard Rekordbox XML format.</p>
+        <label style="display:block; margin-top:12px; margin-bottom:4px; font-weight:600;">Destination File Path:</label>
+        <input type="text" id="export-path-input" value="rekordbox.xml">
+      </div>
+      <div class="modal-footer">
+        <button id="btn-confirm-export" class="btn btn-accent">Confirm Export</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Keyboard Shortcuts Modal -->
+  <div id="modal-shortcuts" class="modal-backdrop hidden">
+    <div class="modal-card modal-large">
+      <div class="modal-header">
+        <h3 style="display:flex; align-items:center; gap:8px;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M6 16h12"/></svg>
+          DJ Keyboard Shortcuts
+        </h3>
+        <button id="btn-close-shortcuts-modal" class="btn-close" aria-label="Close Shortcuts Modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="margin-bottom:14px; font-size:13px; color:var(--text-muted);">Use these hardware-grade hotkeys for lighting-fast track curation, scrubbing, and cueing:</p>
+        
+        <table class="shortcuts-table" style="width:100%; border-collapse:collapse; font-size:13px;">
+          <thead>
+            <tr style="border-bottom:1px solid #232b3b; color:var(--text-muted); text-align:left;">
+              <th style="padding:8px 6px;">Action</th>
+              <th style="padding:8px 6px;">Shortcut</th>
+              <th style="padding:8px 6px;">Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- Transport & Playback (Cyan) -->
+            <tr style="border-bottom:1px solid #181e2b;">
+              <td style="padding:8px 6px; font-weight:600; color:var(--cyan-glow);">Play / Pause</td>
+              <td style="padding:8px 6px;"><kbd class="shortcut-key">Space</kbd></td>
+              <td style="padding:8px 6px; color:var(--text-muted);">Toggle audio playback at 60 FPS</td>
+            </tr>
+            <tr style="border-bottom:1px solid #181e2b;">
+              <td style="padding:8px 6px; font-weight:600; color:var(--cyan-glow);">Nudge / Scrub Beat</td>
+              <td style="padding:8px 6px;"><kbd class="shortcut-key">←</kbd> / <kbd class="shortcut-key">→</kbd></td>
+              <td style="padding:8px 6px; color:var(--text-muted);">Seek ±1 beat on the beatgrid</td>
+            </tr>
+            <tr style="border-bottom:1px solid #181e2b;">
+              <td style="padding:8px 6px; font-weight:600; color:var(--cyan-glow);">Bar Seek</td>
+              <td style="padding:8px 6px;"><kbd class="shortcut-key">Shift</kbd> + <kbd class="shortcut-key">←</kbd> / <kbd class="shortcut-key">→</kbd></td>
+              <td style="padding:8px 6px; color:var(--text-muted);">Jump ±4 beats (1 full measure)</td>
+            </tr>
+
+            <!-- HotCues & Markers (Green & Pink) -->
+            <tr style="border-bottom:1px solid #181e2b;">
+              <td style="padding:8px 6px; font-weight:600; color:var(--green-glow);">Add HotCue</td>
+              <td style="padding:8px 6px;"><kbd class="shortcut-key">M</kbd></td>
+              <td style="padding:8px 6px; color:var(--text-muted);">Drop a new HotCue marker at current needle position</td>
+            </tr>
+            <tr style="border-bottom:1px solid #181e2b;">
+              <td style="padding:8px 6px; font-weight:600; color:var(--pink-glow);">Trigger HotCues</td>
+              <td style="padding:8px 6px;"><kbd class="shortcut-key">1</kbd> to <kbd class="shortcut-key">8</kbd></td>
+              <td style="padding:8px 6px; color:var(--text-muted);">Jump instantly to HotCue pads 1 through 8</td>
+            </tr>
+
+            <!-- Beatgrid & Timing (Purple) -->
+            <tr style="border-bottom:1px solid #181e2b;">
+              <td style="padding:8px 6px; font-weight:600; color:var(--purple-glow);">Set First Beat (1.1)</td>
+              <td style="padding:8px 6px;"><kbd class="shortcut-key">Shift</kbd> + <kbd class="shortcut-key">M</kbd></td>
+              <td style="padding:8px 6px; color:var(--text-muted);">Calibrate Beatgrid 1.1 downbeat to current needle position</td>
+            </tr>
+            <tr style="border-bottom:1px solid #181e2b;">
+              <td style="padding:8px 6px; font-weight:600; color:var(--purple-glow);">Toggle Beatgrid</td>
+              <td style="padding:8px 6px;"><kbd class="shortcut-key">B</kbd></td>
+              <td style="padding:8px 6px; color:var(--text-muted);">Show/hide 32-beat and 16-beat phrase lines</td>
+            </tr>
+            <tr style="border-bottom:1px solid #181e2b;">
+              <td style="padding:8px 6px; font-weight:600; color:var(--purple-glow);">Toggle Snap</td>
+              <td style="padding:8px 6px;"><kbd class="shortcut-key">S</kbd></td>
+              <td style="padding:8px 6px; color:var(--text-muted);">Toggle magnetic beatgrid snapping</td>
+            </tr>
+
+            <!-- View & Zoom (Orange) -->
+            <tr style="border-bottom:1px solid #181e2b;">
+              <td style="padding:8px 6px; font-weight:600; color:var(--orange-glow);">Zoom Waveform</td>
+              <td style="padding:8px 6px;"><kbd class="shortcut-key">+</kbd> / <kbd class="shortcut-key">-</kbd> / <kbd class="shortcut-key">0</kbd></td>
+              <td style="padding:8px 6px; color:var(--text-muted);">Zoom In / Zoom Out / Reset Zoom to 1x</td>
+            </tr>
+            <tr style="border-bottom:1px solid #181e2b;">
+              <td style="padding:8px 6px; font-weight:600; color:var(--orange-glow);">Toggle Waveform / Playlist</td>
+              <td style="padding:8px 6px;"><kbd class="shortcut-key">W</kbd></td>
+              <td style="padding:8px 6px; color:var(--text-muted);">Collapse/expand waveform panel to maximize playlist view</td>
+            </tr>
+
+            <!-- Navigation & Help (Neutral) -->
+            <tr style="border-bottom:1px solid #181e2b;">
+              <td style="padding:8px 6px; font-weight:600; color:var(--text-main);">Shortcuts Cheat Sheet</td>
+              <td style="padding:8px 6px;"><kbd class="shortcut-key">?</kbd> / <kbd class="shortcut-key">F1</kbd></td>
+              <td style="padding:8px 6px; color:var(--text-muted);">Open or toggle this shortcuts helper dialog</td>
+            </tr>
+            <tr>
+              <td style="padding:8px 6px; font-weight:600; color:var(--text-main);">Close Modal / Dismiss</td>
+              <td style="padding:8px 6px;"><kbd class="shortcut-key">Esc</kbd></td>
+              <td style="padding:8px 6px; color:var(--text-muted);">Exit any open dialog window</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-close-shortcuts-footer" class="btn btn-secondary">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- JS Logic -->
+  <script src="src/app.js"></script>
+</body>
+</html>

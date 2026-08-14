@@ -1,0 +1,15 @@
+{
+  "dataset": "GiantSteps Key Dataset",
+  "tracks": 92,
+  "windows": 14619,
+  "window_top1_acc": 43.3,
+  "window_top3_acc": 65.74,
+  "window_top5_acc": 77.02,
+  "macro_precision": 26.28,
+  "macro_recall": 27.22,
+  "macro_f1": 24.46,
+  "mirex_window_score": 53.52,
+  "track_top1_acc": 57.61,
+  "track_mirex_score": 64.89,
+  "calibration_ece": 0.0564
+}

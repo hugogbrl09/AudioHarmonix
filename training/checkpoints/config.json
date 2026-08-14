@@ -1,0 +1,19 @@
+{
+  "architecture": "AudioHarmonixKeyNet_AntiOverfit",
+  "seed": 42,
+  "epochs": 15,
+  "batch_size": 256,
+  "samples_per_epoch": 15000,
+  "weight_decay": 0.005,
+  "spec_augment": true,
+  "lr": 0.001,
+  "device": "CPU (threads=4)",
+  "python_version": "3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]",
+  "pytorch_version": "2.13.0+cpu",
+  "dataset": "GiantSteps Key Dataset (EDM 604 tracks)",
+  "input_shape": [
+    1,
+    84,
+    64
+  ]
+}

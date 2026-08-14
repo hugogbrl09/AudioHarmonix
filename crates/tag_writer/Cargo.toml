@@ -1,0 +1,8 @@
+[package]
+name = "tag_writer"
+version = "1.0.0"
+edition = "2021"
+
+[dependencies]
+id3 = "1.7"
+quick-xml = "0.31"

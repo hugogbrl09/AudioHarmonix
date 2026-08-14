@@ -1,0 +1,15 @@
+[workspace]
+members = [
+    "src-tauri",
+    "crates/audio_decoder",
+    "crates/dsp_core",
+    "crates/ml_engine",
+    "crates/tag_writer"
+]
+resolver = "2"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"

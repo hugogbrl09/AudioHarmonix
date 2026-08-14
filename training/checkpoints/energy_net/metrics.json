@@ -1,0 +1,5 @@
+{
+  "best_val_mae": 1.1308,
+  "final_val_acc_1pt": 45.45,
+  "epochs_trained": 6
+}

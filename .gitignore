@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# Rust / Tauri
+target/
+Cargo.lock
+
+# Database & Runtime Data
+*.db-journal
+*.log
+
+# Large Datasets & Binary Caches (> 50MB)
+*.npz
+dataset/*.npz
+dataset/dataset_cache.npz
+
+# Operating System
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Agent caches & scratch markdown docs
+.gemini/
+.agent/
+.agents/
+.impeccable/
+prompt.md
+plano_audioharmonix.md
+melhorar_modelo.md
+TODO.md

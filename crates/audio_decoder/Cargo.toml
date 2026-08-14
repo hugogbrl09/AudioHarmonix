@@ -1,0 +1,8 @@
+[package]
+name = "audio_decoder"
+version = "1.0.0"
+edition = "2021"
+
+[dependencies]
+symphonia = { version = "0.5", features = ["all"] }
+hound = "3.5"
