@@ -72,8 +72,25 @@ def compute_energy_score(y, sr=SAMPLE_RATE):
 
 def compute_cqt(y, sr=SAMPLE_RATE, n_bins=84, bins_per_octave=12, fmin=32.7, hop_length=HOP_SIZE):
     """
-    Section 4.2: Fast Vectorized Constant-Q Transform (CQT) & Chromagram
+    Section 4.2: High-Precision Constant-Q Transform (CQT) & Chromagram
+    Uses librosa.cqt when available with fast vectorized STFT-filterbank fallback.
     """
+    try:
+        import librosa
+        cqt_complex = librosa.cqt(y, sr=sr, n_bins=n_bins, bins_per_octave=bins_per_octave, fmin=fmin, hop_length=hop_length)
+        cqt_matrix = np.abs(cqt_complex).astype(np.float32)
+        
+        # Log-scale compression
+        cqt_matrix = np.log1p(cqt_matrix)
+        chromagram = np.zeros((12, cqt_matrix.shape[1]), dtype=np.float32)
+        for b in range(n_bins):
+            chromagram[b % 12, :] += cqt_matrix[b, :]
+        col_sums = np.sum(chromagram, axis=0) + 1e-9
+        chromagram = chromagram / col_sums
+        return cqt_matrix, chromagram
+    except Exception:
+        pass
+
     freqs = fmin * (2.0 ** (np.arange(n_bins) / float(bins_per_octave)))
     f_stft, t_stft, Zxx = signal.stft(y, fs=sr, nperseg=FFT_WINDOW, noverlap=FFT_WINDOW-hop_length)
     mag_stft = np.abs(Zxx)

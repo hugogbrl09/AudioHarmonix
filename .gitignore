@@ -35,6 +35,10 @@ Cargo.lock
 # Database & Runtime Data
 *.db-journal
 *.log
+models/structure_detector_versions/
+training/checkpoints/key_net_v2/
+training/checkpoints/structure_net_v2/
+training/checkpoints/energy_net_v2/
 
 # Large Datasets & Binary Caches (> 50MB)
 *.npz
