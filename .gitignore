@@ -59,3 +59,10 @@ prompt.md
 plano_audioharmonix.md
 melhorar_modelo.md
 TODO.md
+
+# Sensitive Tools & Auth Scripts
+tools/github_auth_and_push.py
+tools/*auth*.py
+*.pem
+*.key
+*.token
