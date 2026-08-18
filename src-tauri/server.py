@@ -84,9 +84,9 @@ def process_single_file(file_path):
     dsp_energy = dsp.compute_energy_score(y, sr=sr)
     energy_score = ml_energy_detector.predict_energy(y, sr=sr, dsp_fallback_energy=dsp_energy)
 
-    # 3. CQT & Key Detection via Neural KeyNet
+    # 3. CQT & Key Detection via Neural KeyNet + Harmonic Chromagram
     cqt_matrix, chromagram = dsp.compute_cqt(y, sr=sr)
-    detected_key, camelot_key, open_key, key_confidence = ml_key_detector.predict_key(cqt_matrix)
+    detected_key, camelot_key, open_key, key_confidence = ml_key_detector.predict_key(cqt_matrix, chromagram=chromagram)
 
     # 4. BPM & Beat Tracking
     bpm, bpm_confidence, beat_timestamps, is_variable_bpm = dsp.estimate_bpm_and_beatgrid(y, sr=sr)

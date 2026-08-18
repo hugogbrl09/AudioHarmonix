@@ -31,7 +31,7 @@ class TestDeepLearningModels(unittest.TestCase):
         det_key, camelot_key, open_key, conf = self.key_detector.predict_key(cqt_matrix)
         elapsed = (time.time() - t0) * 1000.0
         
-        self.assertIn("A", camelot_key + "B")
+        self.assertTrue(camelot_key.endswith("A") or camelot_key.endswith("B"))
         self.assertGreaterEqual(conf, 0.20)
         self.assertLess(elapsed, 150.0, f"KeyNet latency too high: {elapsed:.2f}ms")
         print(f"[+] KeyNet ONNX: {det_key} ({camelot_key}) | Latency: {elapsed:.2f}ms")

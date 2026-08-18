@@ -183,7 +183,7 @@ def train_keynet_v2(epochs=8, batch_size=64, lr=2e-3, samples_per_key=350):
     
     model = AudioHarmonixKeyNetV2(num_classes=24).to(device)
     optimizer = optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-3)
-    loss_fn = CircleOfFifthsHarmonicLoss(harmonic_weight=0.30, label_smoothing=0.02)
+    loss_fn = nn.CrossEntropyLoss(label_smoothing=0.05)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=1e-5)
     
     best_val_acc = 0.0
