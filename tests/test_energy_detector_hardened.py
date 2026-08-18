@@ -43,15 +43,17 @@ class TestEnergyDetectorHardened(unittest.TestCase):
         self.assertEqual(energy, 6)
 
     def test_energy_detector_high_vs_low_energy_synthetic(self):
-        """Verifies that loud, bass-heavy audio scores higher energy than low-amplitude ambient sine wave."""
-        sr = 22050
-        dur = 6.0
-        t = np.linspace(0, dur, int(sr * dur), endpoint=False)
+        """Verifies that high-energy Drop audio scores higher energy than low-energy Intro/Outro audio."""
+        from synthetic_edm_generator import ProceduralEDMTrackGenerator
+        gen = ProceduralEDMTrackGenerator(sr=22050)
+        tr = gen.generate_track(key_id=0, bpm=128.0, bars=32)
+        y = tr["audio"]
+        sr = tr["sr"]
 
-        # Quiet ambient audio
-        y_low = (0.05 * np.sin(2 * np.pi * 440.0 * t)).astype(np.float32)
-        # Heavy bass transient beat
-        y_high = (0.95 * np.sin(2 * np.pi * 60.0 * t) * (np.sin(2 * np.pi * 4.0 * t) > 0.5)).astype(np.float32)
+        # Intro audio (first 6 seconds)
+        y_low = y[:int(sr * 6.0)]
+        # Drop audio (seconds 18 to 24)
+        y_high = y[int(sr * 18.0):int(sr * 24.0)]
 
         e_low = self.detector.predict_energy_raw(y_low, sr=sr)
         e_high = self.detector.predict_energy_raw(y_high, sr=sr)

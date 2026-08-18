@@ -97,23 +97,23 @@ class AudioHarmonixEnergyNetV2(nn.Module):
         return score
 
 
-def train_energy_net_v2(epochs=12, batch_size=32, lr=1e-3):
+def train_energy_net_v2(epochs=10, batch_size=64, lr=1.5e-3):
     os.makedirs(CHECKPOINT_DIR, exist_ok=True)
     device = torch.device("cpu")
     
-    print("=" * 80)
-    print("  AUDIOHARMONIX ENERGYNET V2 TRAINING (PSYCHOACOUSTIC SE-REGRESSOR)")
-    print("=" * 80)
+    print("=" * 80, flush=True)
+    print("  AUDIOHARMONIX ENERGYNET V2 TRAINING (PSYCHOACOUSTIC SE-REGRESSOR)", flush=True)
+    print("=" * 80, flush=True)
     
     if not os.path.exists(DATASET_CACHE):
-        print(f"Error: {DATASET_CACHE} not found!")
+        print(f"Error: {DATASET_CACHE} not found!", flush=True)
         return
 
     data = np.load(DATASET_CACHE)
     mels = data["mels"]
     energies = data["energies"]
     
-    print(f"[+] Loaded {len(mels)} energy training segments.")
+    print(f"[+] Loaded {len(mels)} energy training segments.", flush=True)
     
     split = int(0.85 * len(mels))
     X_train = torch.from_numpy(mels[:split]).unsqueeze(1)
@@ -160,16 +160,17 @@ def train_energy_net_v2(epochs=12, batch_size=32, lr=1e-3):
         avg_val_loss = val_loss / len(X_val)
         epoch_time = time.time() - t0
         
-        print(f"Epoch [{epoch:02d}/{epochs:02d}] ({epoch_time:.1f}s) - Train Huber Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f}")
+        print(f"[*] Epoch [{epoch:02d}/{epochs:02d}] ({epoch_time:.1f}s) - Train Huber Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f}", flush=True)
         
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
             torch.save(model.state_dict(), os.path.join(CHECKPOINT_DIR, "best_model.pt"))
+            print(f"    --> Saved new best EnergyNet model (Val Loss: {best_val_loss:.4f})", flush=True)
             
-    print(f"\n[+] EnergyNet v2 Training Complete! Best Validation Loss: {best_val_loss:.4f}")
+    print(f"\n[+] EnergyNet v2 Training Complete! Best Validation Loss: {best_val_loss:.4f}", flush=True)
     
     # Export to ONNX
-    print("\n[+] Exporting EnergyNet v2 to ONNX...")
+    print("\n[+] Exporting EnergyNet v2 to ONNX...", flush=True)
     best_model = AudioHarmonixEnergyNetV2()
     best_model.load_state_dict(torch.load(os.path.join(CHECKPOINT_DIR, "best_model.pt"), map_location="cpu"))
     best_model.eval()
@@ -183,7 +184,7 @@ def train_energy_net_v2(epochs=12, batch_size=32, lr=1e-3):
         input_names=['mel_spectrogram'], output_names=['energy_score'],
         dynamic_axes={'mel_spectrogram': {0: 'batch_size', 3: 'time_frames'}, 'energy_score': {0: 'batch_size'}}
     )
-    print(f"[+] EnergyNet v2 successfully exported to: {onnx_out} ({os.path.getsize(onnx_out)/1024/1024:.2f} MB)")
+    print(f"[+] EnergyNet v2 successfully exported to: {onnx_out} ({os.path.getsize(onnx_out)/1024/1024:.2f} MB)", flush=True)
 
 if __name__ == "__main__":
     train_energy_net_v2()
