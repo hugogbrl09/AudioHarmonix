@@ -198,18 +198,14 @@ class KeyDetector:
         if not windows:
             windows.append(np.zeros((84, window_frames), dtype=np.float32))
 
-        all_window_probs = []
+        # 2. Sliding Window Neural KeyNet Inference
+        neural_window_probs = []
 
         for w in windows:
             # Per-window Z-score normalization for neural network stability
             w_std = float(np.std(w)) + 1e-6
             w_norm = ((w - np.mean(w)) / w_std).astype(np.float32)
 
-            # Local Window Harmonic Chromagram Analysis (harmonic band C2-C6)
-            w_chroma_logits = self._template_predict(w)
-            w_chroma_probs = safe_softmax(w_chroma_logits * 5.0)
-
-            w_neural_probs = w_chroma_probs
             if self.session is not None:
                 try:
                     cqt_input = w_norm[:84, :window_frames].reshape(1, 1, 84, window_frames)
@@ -217,16 +213,25 @@ class KeyDetector:
                     outputs = self.session.run(None, {input_name: cqt_input})
                     logits = outputs[0][0]
                     w_neural_probs = safe_softmax(logits)
+                    neural_window_probs.append(w_neural_probs)
                 except Exception as e:
                     logger.debug(f"ONNX Key inference step notice: {e}")
 
-            # Hybrid blend: 60% Harmonic Chroma + 40% Deep Neural
-            combined_w = 0.60 * w_chroma_probs + 0.40 * w_neural_probs
-            all_window_probs.append(combined_w)
+        # Average Neural probabilities across all time windows of the track
+        if len(neural_window_probs) > 0:
+            avg_neural_probs = np.mean(neural_window_probs, axis=0)
+        else:
+            avg_neural_probs = np.ones(24, dtype=np.float32) / 24.0
 
-        # 3. Aggregate temporal window predictions + global track profile
-        avg_window_probs = np.mean(all_window_probs, axis=0)
-        final_probs = 0.55 * avg_window_probs + 0.45 * global_chroma_probs
+        # 3. Global Harmonic Chromagram Profile (DSP Baseline Regularizer)
+        global_chroma_logits = self._template_predict(cqt_matrix, chromagram=chromagram)
+        global_chroma_probs = safe_softmax(global_chroma_logits)
+
+        # 4. Final Prediction: 70% Deep Neural AI + 30% DSP Regularizer
+        if self.session is not None and len(neural_window_probs) > 0:
+            final_probs = 0.70 * avg_neural_probs + 0.30 * global_chroma_probs
+        else:
+            final_probs = global_chroma_probs
 
         best_idx = int(np.argmax(final_probs))
         top_prob = float(final_probs[best_idx])

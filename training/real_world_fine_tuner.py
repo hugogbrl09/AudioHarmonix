@@ -96,15 +96,35 @@ def fine_tune_keynet_on_library(epochs=5, lr=1e-4, batch_size=32):
         print("[!] No verified real tracks found to fine-tune. Aborting.", flush=True)
         return False
         
-    print(f"\n[2/3] Preparing training corpus ({len(real_x)} real commercial windows)...", flush=True)
+    master_npz = os.path.join(BASE_DIR, "dataset", "key_dataset_master.npz")
+    all_x = [real_x]
+    all_y = [real_y]
+    
+    if os.path.exists(master_npz):
+        try:
+            m_data = np.load(master_npz)
+            m_x = m_data["cqts"]
+            m_y = m_data["labels"]
+            # Subsample 15,000 balanced master synthetic windows to train fast on CPU
+            idx_sub = np.random.choice(len(m_x), size=min(15000, len(m_x)), replace=False)
+            all_x.append(m_x[idx_sub])
+            all_y.append(m_y[idx_sub])
+            print(f"[+] Merged {len(idx_sub)} balanced master corpus windows with real audio tracks.", flush=True)
+        except Exception as e:
+            print(f"[!] Notice loading master npz: {e}", flush=True)
+            
+    combined_x = np.concatenate(all_x, axis=0)
+    combined_y = np.concatenate(all_y, axis=0)
+    
+    print(f"\n[2/3] Preparing training corpus ({len(combined_x)} total balanced windows across all 24 keys)...", flush=True)
     
     # Shuffle
-    perm = np.random.permutation(len(real_x))
-    real_x, real_y = real_x[perm], real_y[perm]
+    perm = np.random.permutation(len(combined_x))
+    combined_x, combined_y = combined_x[perm], combined_y[perm]
     
-    split = int(0.85 * len(real_x))
-    X_train, y_train = torch.from_numpy(real_x[:split]).unsqueeze(1), torch.from_numpy(real_y[:split])
-    X_val, y_val = torch.from_numpy(real_x[split:]).unsqueeze(1), torch.from_numpy(real_y[split:])
+    split = int(0.85 * len(combined_x))
+    X_train, y_train = torch.from_numpy(combined_x[:split]).unsqueeze(1), torch.from_numpy(combined_y[:split])
+    X_val, y_val = torch.from_numpy(combined_x[split:]).unsqueeze(1), torch.from_numpy(combined_y[split:])
     
     train_loader = DataLoader(TensorDataset(X_train, y_train), batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(TensorDataset(X_val, y_val), batch_size=batch_size, shuffle=False)
