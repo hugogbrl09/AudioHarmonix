@@ -33,6 +33,9 @@ target/
 Cargo.lock
 
 # Database & Runtime Data
+*.db
+*.sqlite
+*.sqlite3
 *.db-journal
 *.db-wal
 *.db-shm
@@ -57,7 +60,7 @@ desktop.ini
 .agent/
 .agents/
 .impeccable/
-prompt.md
+prompt*.md
 plano_audioharmonix.md
 melhorar_modelo.md
 TODO.md
