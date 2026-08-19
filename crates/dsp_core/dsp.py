@@ -3,6 +3,8 @@ AudioHarmonix DSP Core Engine
 Section 4: Signal Processing, Spectral Analysis, Energy Scoring, Beat Tracking & Waveform Generation
 """
 
+import os
+from dataclasses import dataclass, field
 import numpy as np
 from scipy import signal
 from scipy.fft import rfft, irfft
@@ -301,12 +303,397 @@ def estimate_bpm_and_beatgrid(y, sr=SAMPLE_RATE, hop_length=HOP_SIZE):
 
     return bpm, confidence, beat_timestamps, is_variable_bpm
 
-def detect_cue_points(y, beat_timestamps, duration_secs, sr=SAMPLE_RATE):
+
+# ===========================================================================
+# EXPERIMENTAL DSP CONFIGURATION & 3-LAYER ARCHITECTURE
+# ===========================================================================
+
+@dataclass
+class ExperimentalDSPConfig:
     """
-    Section 4.4: Industry-Standard Multi-Section HotCue Analyzer (State Machine)
-    Scans phrase-by-phrase (4 bars / 16 beats) across the entire track using 
-    Sub-Bass Energy Jump (Delta E_bass) scoring & Sub-Bass Onset Snapping to identify ALL structural transitions:
-    FIRST_BEAT, DROP_1, BREAKDOWN, DROP_2, BREAK_2, DROP_3, OUTRO.
+    Centralized configuration for experimental DSP cue point detection.
+    All thresholds are relative/dynamic parameters subject to empirical calibration.
+    """
+    min_phrase_beats: int = 16
+    rel_transient_threshold: float = 0.15      # Break: TransientEnergy < 15% of track peak
+    rel_beat_pulse_threshold: float = 0.25     # Break: BeatPulse < 25% of track peak
+    min_break_duration_sec: float = 8.0        # Minimum duration to confirm Break
+    buildup_slope_threshold: float = 0.55      # Buildup: Mid-High energy slope > +55%
+    buildup_flux_accel_threshold: float = 1.70 # Buildup: Spectral flux acceleration > 1.7x
+    buildup_lookback_beats: int = 32           # Maximum beats to inspect before a Drop
+    pre_drop_gap_threshold: float = 0.85       # Pre-drop: Last beat RMS < 85% of mean
+
+DEFAULT_EXPERIMENTAL_CONFIG = ExperimentalDSPConfig()
+
+
+# ---------------------------------------------------------------------------
+# LAYER 1: EVIDENCE EXTRACTION
+# ---------------------------------------------------------------------------
+
+def extract_dsp_evidence(y, sr, beat_timestamps, duration_secs, config=DEFAULT_EXPERIMENTAL_CONFIG):
+    """
+    Layer 1: Multi-band acoustic evidence extraction across phrase intervals.
+    Produces continuous diagnostic features: TransientEnergy, BeatPulse, e_bass,
+    MidHighEnergy, SubBassEnergy, SpectralFlux, and continuous BreakScore.
+    """
+    if not beat_timestamps or len(beat_timestamps) == 0:
+        beat_timestamps = [0.0]
+
+    phrase_step = config.min_phrase_beats
+    phrase_beats = beat_timestamps[::phrase_step] if len(beat_timestamps) >= phrase_step else beat_timestamps
+    if not phrase_beats:
+        phrase_beats = [beat_timestamps[0]]
+
+    # Filters for distinct frequency bands
+    try:
+        sos_sub = signal.butter(4, [30.0, 100.0], btype='bandpass', fs=sr, output='sos')
+        sos_bass = signal.butter(4, [20.0, 250.0], btype='bandpass', fs=sr, output='sos')
+        sos_mh = signal.butter(4, [1000.0, 8000.0], btype='bandpass', fs=sr, output='sos')
+        sos_sub_only = signal.butter(4, 150.0, btype='lowpass', fs=sr, output='sos')
+
+        y_sub = signal.sosfilt(sos_sub, y)
+        y_bass = signal.sosfilt(sos_bass, y)
+        y_mh = signal.sosfilt(sos_mh, y)
+        y_sub_only = signal.sosfilt(sos_sub_only, y)
+    except Exception:
+        y_sub = y
+        y_bass = y
+        y_mh = y
+        y_sub_only = y
+
+    # Sub-bass envelope for transient onset tracking
+    try:
+        env_sub = signal.medfilt(np.abs(signal.hilbert(y_sub)), 101)
+    except Exception:
+        env_sub = np.abs(y_sub)
+
+    diff_env_sub = np.maximum(0, np.diff(env_sub))
+
+    phrase_records = []
+    for i, p_sec in enumerate(phrase_beats):
+        p_end = phrase_beats[i+1] if i+1 < len(phrase_beats) else duration_secs
+        s_idx, e_idx = int(p_sec * sr), int(p_end * sr)
+
+        seg_full = y[s_idx:e_idx]
+        seg_bass = y_bass[s_idx:e_idx]
+        seg_mh = y_mh[s_idx:e_idx]
+        seg_sub_o = y_sub_only[s_idx:e_idx]
+        seg_diff = diff_env_sub[s_idx:min(len(diff_env_sub), e_idx)]
+
+        e_rms = float(np.sqrt(np.mean(np.square(seg_full)))) if len(seg_full) > 0 else 0.0
+        e_bass = float(np.sqrt(np.mean(np.square(seg_bass)))) if len(seg_bass) > 0 else 0.0
+        e_mh = float(np.sqrt(np.mean(np.square(seg_mh)))) if len(seg_mh) > 0 else 0.0
+        e_sub_o = float(np.sqrt(np.mean(np.square(seg_sub_o)))) if len(seg_sub_o) > 0 else 0.0
+
+        trans_e = float(np.mean(np.square(seg_diff)) * 1e6) if len(seg_diff) > 0 else 0.0
+
+        # Synchronous beat pulse on beatgrid
+        sec_beats = [b for b in beat_timestamps if p_sec <= b < p_end]
+        beat_pulses = []
+        for bt in sec_beats:
+            b_i = int(bt * sr)
+            w = env_sub[max(0, b_i - int(0.04*sr)):min(len(env_sub), b_i + int(0.08*sr))]
+            if len(w) > 0:
+                beat_pulses.append(float(np.max(w) - np.min(w)))
+        beat_pulse = float(np.mean(beat_pulses)) if beat_pulses else 0.0
+
+        flux = float(np.mean(np.square(np.diff(np.abs(seg_mh)))) * 1e6) if len(seg_mh) > 1 else 0.0
+
+        phrase_records.append({
+            "sec": p_sec,
+            "end_sec": p_end,
+            "e_rms": e_rms,
+            "e_bass": e_bass,
+            "e_mh": e_mh,
+            "e_sub_o": e_sub_o,
+            "trans_e": trans_e,
+            "beat_pulse": beat_pulse,
+            "flux": flux
+        })
+
+    # Reference levels: 90th percentile across the track to avoid single-peak skew
+    all_trans = [p["trans_e"] for p in phrase_records]
+    all_pulse = [p["beat_pulse"] for p in phrase_records]
+    all_bass = [p["e_bass"] for p in phrase_records]
+
+    ref_trans = float(np.percentile(all_trans, 90)) if all_trans else 1.0
+    ref_pulse = float(np.percentile(all_pulse, 90)) if all_pulse else 1.0
+    ref_bass = float(np.percentile(all_bass, 90)) if all_bass else 1.0
+
+    ref_trans = max(1e-6, ref_trans)
+    ref_pulse = max(1e-6, ref_pulse)
+    ref_bass = max(1e-6, ref_bass)
+
+    # Calculate normalized scores and continuous BreakScore
+    for p in phrase_records:
+        norm_trans = min(1.0, p["trans_e"] / ref_trans)
+        norm_pulse = min(1.0, p["beat_pulse"] / ref_pulse)
+        norm_bass = min(1.0, p["e_bass"] / ref_bass)
+
+        # Break evidence: Low transient activity + low synchronous pulse in sub-bass
+        t_inact = max(0.0, 1.0 - norm_trans / max(1e-6, config.rel_transient_threshold)) if norm_trans < config.rel_transient_threshold else 0.0
+        p_inact = max(0.0, 1.0 - norm_pulse / max(1e-6, config.rel_beat_pulse_threshold)) if norm_pulse < config.rel_beat_pulse_threshold else 0.0
+
+        break_score = 0.55 * t_inact + 0.45 * p_inact
+        p["break_score"] = float(np.clip(break_score, 0.0, 1.0))
+        p["norm_trans"] = float(norm_trans)
+        p["norm_pulse"] = float(norm_pulse)
+        p["norm_bass"] = float(norm_bass)
+
+    return {
+        "phrases": phrase_records,
+        "ref_trans": ref_trans,
+        "ref_pulse": ref_pulse,
+        "ref_bass": ref_bass,
+        "y": y,
+        "y_bass": y_bass,
+        "y_mh": y_mh,
+        "y_sub_only": y_sub_only
+    }
+
+
+# ---------------------------------------------------------------------------
+# LAYER 2: CANDIDATE GENERATION
+# ---------------------------------------------------------------------------
+
+def generate_structural_candidates(evidence, beat_timestamps, duration_secs, sr=SAMPLE_RATE, config=DEFAULT_EXPERIMENTAL_CONFIG):
+    """
+    Layer 2: Generates candidate structural events (DROP, BREAKDOWN, BUILDUP, OUTRO)
+    based on evidence signals without coupling to final sequential HotCue numbering.
+    """
+    phrases = evidence["phrases"]
+    y = evidence["y"]
+    y_bass = evidence["y_bass"]
+    y_mh = evidence["y_mh"]
+    max_bass = evidence["ref_bass"]
+
+    candidates = []
+    first_beat = beat_timestamps[0] if beat_timestamps else 0.0
+
+    candidates.append({
+        "cue_type": "FIRST_BEAT",
+        "position_secs": first_beat,
+        "score": 1.0,
+        "diagnostics": {"type": "anchor"}
+    })
+
+    # Step 1: Detect Drop candidates
+    drop_candidates = []
+    in_drop = False
+    last_drop_sec = -999.0
+    last_break_sec = -999.0
+
+    for i, p in enumerate(phrases):
+        sec = p["sec"]
+        if sec >= duration_secs * 0.90:
+            continue
+
+        prev_b = phrases[i-1]["e_bass"] if i > 0 else 0.0
+        delta_b = p["e_bass"] - prev_b
+
+        # High-precision Drop Condition
+        is_drop = (p["e_bass"] >= 0.58 * max_bass and delta_b >= 0.035) or \
+                  (p["e_bass"] >= 0.80 * max_bass and delta_b >= 0.015) or \
+                  (p["norm_pulse"] >= 0.60 and p["norm_trans"] >= 0.50 and delta_b >= 0.02)
+
+        # Break condition: Transient & synchronous pulse drop in sub-bass
+        is_break = (p["break_score"] >= 0.40) or (p["norm_trans"] <= 0.12 and p["norm_pulse"] <= 0.20)
+
+        # Don't register a drop candidate at the very start (0.0s) unless it has full maximum bass
+        is_intro_beat = (sec <= first_beat + 4.0) and (p["e_bass"] < 0.80 * max_bass)
+
+        if is_drop and not in_drop and not is_intro_beat and (sec - last_drop_sec >= 14.0):
+            # Snap position to peak sub-bass onset beat
+            cand_beats = [b for b in beat_timestamps if sec - 1.0 <= b <= sec + 2.5]
+            best_sec = sec
+            if cand_beats:
+                best_sec = max(cand_beats, key=lambda b: np.mean(y_bass[int(b*sr):int((b+0.2)*sr)]**2) if int((b+0.2)*sr) < len(y_bass) else 0)
+
+            drop_cand = {
+                "cue_type": "DROP",
+                "position_secs": float(best_sec),
+                "score": float(p["norm_bass"]),
+                "diagnostics": {"e_bass": p["e_bass"], "trans_e": p["trans_e"], "beat_pulse": p["beat_pulse"]}
+            }
+            drop_candidates.append(drop_cand)
+            candidates.append(drop_cand)
+            in_drop = True
+            last_drop_sec = float(best_sec)
+
+        # Breakdown is structurally valid only AFTER the first consolidated Drop has occurred
+        elif is_break and in_drop and len(drop_candidates) > 0 and (sec - last_drop_sec >= 12.0) and (sec - last_break_sec >= 14.0):
+            break_cand = {
+                "cue_type": "BREAKDOWN",
+                "position_secs": float(sec),
+                "score": float(p["break_score"]),
+                "diagnostics": {"break_score": p["break_score"], "norm_trans": p["norm_trans"], "norm_pulse": p["norm_pulse"]}
+            }
+            candidates.append(break_cand)
+            in_drop = False
+            last_break_sec = float(sec)
+
+    # Step 2: Detect Buildup candidates anchored to detected Drops
+    bpm_est = 120.0
+    if len(beat_timestamps) > 1:
+        ibi_median = float(np.median(np.diff(beat_timestamps)))
+        if ibi_median > 0:
+            bpm_est = 60.0 / ibi_median
+    beat_dur = 60.0 / max(1.0, bpm_est)
+
+    for d_cand in drop_candidates:
+        d_time = d_cand["position_secs"]
+        # Analyze lookback window (up to 32 beats before drop)
+        lookback_sec = min(d_time - first_beat, config.buildup_lookback_beats * beat_dur)
+        if lookback_sec < 8 * beat_dur:
+            continue
+
+        t_start = max(first_beat, d_time - lookback_sec)
+        s_i, e_i = int(t_start * sr), int(d_time * sr)
+        seg_mh = y_mh[s_i:e_i]
+
+        if len(seg_mh) < int(8 * beat_dur * sr):
+            continue
+
+        # Evaluate energy slope and flux acceleration across 4 sub-blocks
+        num_sub = 4
+        sub_len = len(seg_mh) // num_sub
+        if sub_len <= 0:
+            continue
+
+        rms_sub = [float(np.sqrt(np.mean(seg_mh[k*sub_len:(k+1)*sub_len]**2))) for k in range(num_sub)]
+        slope_mh = (rms_sub[-1] - rms_sub[0]) / (rms_sub[0] + 1e-6)
+
+        half = len(seg_mh) // 2
+        f1 = float(np.mean(np.square(np.diff(np.abs(seg_mh[:half])))) * 1e6) if half > 1 else 1.0
+        f2 = float(np.mean(np.square(np.diff(np.abs(seg_mh[half:])))) * 1e6) if half > 1 else 1.0
+        flux_accel = f2 / max(1e-6, f1)
+
+        # Pre-drop gap (last 1 beat before drop vs segment mean)
+        gap_samples = int(beat_dur * sr)
+        last_beat_rms = float(np.sqrt(np.mean(y[max(0, e_i-gap_samples):e_i]**2))) if e_i > gap_samples else 1.0
+        seg_mean_rms = float(np.sqrt(np.mean(y[s_i:e_i]**2))) if e_i > s_i else 1.0
+        gap_ratio = last_beat_rms / max(1e-6, seg_mean_rms)
+
+        is_buildup = (slope_mh >= config.buildup_slope_threshold) or (flux_accel >= config.buildup_flux_accel_threshold)
+
+        if is_buildup:
+            # Anchor buildup start at 16 beats before drop (or 32 beats if slope is extended)
+            buildup_span_beats = 32 if (slope_mh > 1.2 and lookback_sec >= 30 * beat_dur) else 16
+            buildup_sec = max(first_beat, d_time - (buildup_span_beats * beat_dur))
+
+            # Snap to closest beat
+            idx_b = int(np.argmin(np.abs(np.array(beat_timestamps) - buildup_sec)))
+            snapped_buildup = float(beat_timestamps[idx_b])
+
+            buildup_score = float(np.clip(0.50 + 0.25 * min(2.0, slope_mh) + 0.25 * min(2.0, flux_accel - 1.0), 0.0, 1.0))
+            candidates.append({
+                "cue_type": "BUILDUP",
+                "position_secs": snapped_buildup,
+                "score": buildup_score,
+                "diagnostics": {
+                    "slope_mh": slope_mh,
+                    "flux_accel": flux_accel,
+                    "gap_ratio": gap_ratio,
+                    "target_drop_sec": d_time
+                }
+            })
+
+    # Step 3: Outro candidate
+    last_event_sec = max([c["position_secs"] for c in candidates]) if candidates else first_beat
+    outro_candidates = [p["sec"] for p in phrases if p["sec"] >= max(first_beat + 30.0, max(last_event_sec + 15.0, duration_secs * 0.80)) and p["sec"] < duration_secs - 1.5]
+    outro_sec = outro_candidates[0] if outro_candidates else max(first_beat + 10.0, duration_secs - max(2.0, duration_secs * 0.12))
+    candidates.append({
+        "cue_type": "OUTRO",
+        "position_secs": float(outro_sec),
+        "score": 1.0,
+        "diagnostics": {"type": "outro_anchor"}
+    })
+
+    return candidates
+
+
+# ---------------------------------------------------------------------------
+# LAYER 3: HOTCUE CONVERSION & NUMBERING
+# ---------------------------------------------------------------------------
+
+def convert_candidates_to_hotcues(candidates, beat_timestamps, duration_secs, min_spacing_sec=6.0):
+    """
+    Layer 3: Snaps candidates to beatgrid, enforces bounds and minimum spacing,
+    assigns clean sequential labels (DROP_1, DROP_2, BREAK_1, BUILDUP_1...),
+    and numbers hotcue_num 1..8.
+    """
+    if not beat_timestamps or len(beat_timestamps) == 0:
+        beat_timestamps = [0.0]
+
+    first_beat_sec = float(beat_timestamps[0])
+    cues_sorted = sorted(candidates, key=lambda x: x["position_secs"])
+
+    filtered_cues = []
+    last_pos = -999.0
+
+    for c in cues_sorted:
+        pos = float(c["position_secs"])
+
+        if pos >= duration_secs:
+            pos = max(first_beat_sec, round(max(0.0, duration_secs - 1.5), 3))
+
+        if c["cue_type"] == "FIRST_BEAT":
+            pos = round(first_beat_sec, 3)
+
+        # Snap to nearest beatgrid timestamp
+        idx = int(np.argmin(np.abs(np.array(beat_timestamps) - pos)))
+        snapped_pos = round(float(beat_timestamps[idx]), 3)
+
+        if (snapped_pos - last_pos >= min_spacing_sec) or c["cue_type"] == "FIRST_BEAT":
+            c_copy = dict(c)
+            c_copy["position_secs"] = snapped_pos
+            filtered_cues.append(c_copy)
+            last_pos = snapped_pos
+
+    # Deduplicate positions
+    unique_cues = []
+    seen_pos = set()
+    for c in filtered_cues:
+        pos_key = round(c["position_secs"], 2)
+        if pos_key not in seen_pos:
+            seen_pos.add(pos_key)
+            unique_cues.append(c)
+
+    # Sequential semantic labeling
+    drop_idx = 0
+    break_idx = 0
+    buildup_idx = 0
+    for c in unique_cues:
+        raw_type = c["cue_type"]
+        if raw_type.startswith("DROP"):
+            drop_idx += 1
+            c["cue_type"] = f"DROP_{drop_idx}"
+        elif raw_type.startswith("BREAK"):
+            break_idx += 1
+            c["cue_type"] = f"BREAK_{break_idx}"
+        elif raw_type.startswith("BUILDUP"):
+            buildup_idx += 1
+            c["cue_type"] = f"BUILDUP_{buildup_idx}" if buildup_idx > 1 else "BUILDUP"
+
+    # If no drop was found, ensure DROP_1 exists
+    if drop_idx == 0 and len(unique_cues) > 0:
+        unique_cues.insert(1, {"cue_type": "DROP_1", "position_secs": first_beat_sec})
+
+    final_cues = sorted(unique_cues, key=lambda x: x["position_secs"])[:8]
+    for idx, c in enumerate(final_cues, 1):
+        c["hotcue_num"] = idx
+
+    return final_cues
+
+
+# ===========================================================================
+# CUE DETECTION ENGINES (LEGACY & EXPERIMENTAL)
+# ===========================================================================
+
+def detect_cue_points_legacy(y, beat_timestamps, duration_secs, sr=SAMPLE_RATE):
+    """
+    Section 4.4 (Legacy): Original State Machine HotCue Analyzer.
+    Preserved 100% intact for backward-compatibility and A/B benchmarking.
     """
     if not beat_timestamps or len(beat_timestamps) == 0:
         beat_timestamps = [0.0]
@@ -320,12 +707,10 @@ def detect_cue_points(y, beat_timestamps, duration_secs, sr=SAMPLE_RATE):
             {"cue_type": "OUTRO", "position_secs": round(float(outro_b), 3), "hotcue_num": 2}
         ]
 
-    # 1. Extract 4-bar phrase boundaries (16 beats per phrase for 4-bar DJ phrase precision)
     phrase_beats = beat_timestamps[::16] if len(beat_timestamps) >= 16 else beat_timestamps
     if not phrase_beats:
         phrase_beats = [beat_timestamps[0]]
 
-    # 2. Extract Sub-Bass Energy (20-250Hz) and Total RMS for each phrase
     try:
         sos_bass = signal.butter(4, [20.0, 250.0], btype='bandpass', fs=sr, output='sos')
         y_bass = np.abs(signal.sosfilt(sos_bass, y))
@@ -336,10 +721,10 @@ def detect_cue_points(y, beat_timestamps, duration_secs, sr=SAMPLE_RATE):
     for i, p_sec in enumerate(phrase_beats):
         p_end = phrase_beats[i+1] if i+1 < len(phrase_beats) else duration_secs
         s_idx, e_idx = int(p_sec * sr), int(p_end * sr)
-        
+
         segment_bass = y_bass[s_idx:e_idx]
         segment_full = y[s_idx:e_idx]
-        
+
         e_bass = float(np.sqrt(np.mean(np.square(segment_bass)))) if len(segment_bass) > 0 else 0.0
         e_rms = float(np.sqrt(np.mean(np.square(segment_full)))) if len(segment_full) > 0 else 0.0
         phrase_states.append({"sec": p_sec, "e_bass": e_bass, "e_rms": e_rms})
@@ -361,27 +746,21 @@ def detect_cue_points(y, beat_timestamps, duration_secs, sr=SAMPLE_RATE):
     last_drop_sec = -999.0
     last_break_sec = -999.0
 
-    # Scan 16-beat phrases sequentially from start to end
     for i, p in enumerate(phrase_states):
         sec = p["sec"]
-        
-        # Don't place interior drop cues in the last 10% of the track
         if sec >= duration_secs * 0.90 and len(cues) > 1:
             continue
 
         prev_b = phrase_states[i-1]["e_bass"] if i > 0 else 0.0
         delta_b = p["e_bass"] - prev_b
 
-        # High-precision Drop Condition: Sub-bass energy jump >= 0.035 OR sustained peak sub-bass >= 0.80
         is_drop = (p["e_bass"] >= 0.58 * max_bass and delta_b >= 0.035) or (p["e_bass"] >= 0.80 * max_bass and delta_b >= 0.015)
-        # Breakdown condition: Bass drops below 55% of max with significant negative drop
         is_break = (p["e_bass"] <= 0.55 * max_bass) and (delta_b <= -0.035 or p["e_bass"] <= 0.35 * max_bass)
 
         if is_drop and not in_drop and (sec - last_drop_sec >= 14.0):
             drop_count += 1
             label = f"DROP_{drop_count}"
-            
-            # Sub-Bass Onset Snapping: Snap position to candidate beat timestamp with peak sub-bass onset
+
             candidate_beats = [b for b in beat_timestamps if sec - 1.0 <= b <= sec + 2.5]
             best_sec = sec
             if candidate_beats:
@@ -393,7 +772,7 @@ def detect_cue_points(y, beat_timestamps, duration_secs, sr=SAMPLE_RATE):
             })
             in_drop = True
             last_drop_sec = float(best_sec)
-            
+
         elif is_break and in_drop and (sec - last_drop_sec >= 12.0) and (sec - last_break_sec >= 14.0):
             break_count += 1
             label = f"BREAK_{break_count}"
@@ -404,11 +783,9 @@ def detect_cue_points(y, beat_timestamps, duration_secs, sr=SAMPLE_RATE):
             in_drop = False
             last_break_sec = float(sec)
 
-    # If no drop was found (e.g. ambient or low-bass), add default DROP_1
     if drop_count == 0:
         cues.append({"cue_type": "DROP_1", "position_secs": round(float(first_beat), 3)})
 
-    # OUTRO: Place after the last drop, at the start of the final decline in last 12-20% of track
     outro_candidates = [p["sec"] for p in phrase_states if p["sec"] >= max(first_beat + 30.0, max(last_drop_sec + 15.0, duration_secs * 0.80)) and p["sec"] < duration_secs - 1.5]
     outro_sec = outro_candidates[0] if outro_candidates else max(first_beat + 10.0, duration_secs - max(2.0, duration_secs * 0.12))
     cues.append({
@@ -416,8 +793,50 @@ def detect_cue_points(y, beat_timestamps, duration_secs, sr=SAMPLE_RATE):
         "position_secs": round(float(outro_sec), 3)
     })
 
-    # Sanitize, enforce minimum spacing, and assign hotcue_num 1..8 with clean sequential labels
     return _sanitize_and_number_cues(cues, beat_timestamps, duration_secs)
+
+
+def detect_cue_points_experimental(y, beat_timestamps, duration_secs, sr=SAMPLE_RATE,
+                                  config=DEFAULT_EXPERIMENTAL_CONFIG, return_diagnostics=False):
+    """
+    Experimental 3-Layer DSP HotCue Analyzer:
+    Layer 1: extract_dsp_evidence (Transients, Pulses, Flux, continuous Scores)
+    Layer 2: generate_structural_candidates (Drop, Break, Buildup, Outro candidates)
+    Layer 3: convert_candidates_to_hotcues (Beatgrid snapping & 1..8 numbering)
+    """
+    if not beat_timestamps or len(beat_timestamps) == 0:
+        beat_timestamps = [0.0]
+
+    if duration_secs < 30.0:
+        return detect_cue_points_legacy(y, beat_timestamps, duration_secs, sr)
+
+    # Layer 1
+    evidence = extract_dsp_evidence(y, sr, beat_timestamps, duration_secs, config=config)
+
+    # Layer 2
+    candidates = generate_structural_candidates(evidence, beat_timestamps, duration_secs, sr=sr, config=config)
+
+    # Layer 3
+    hotcues = convert_candidates_to_hotcues(candidates, beat_timestamps, duration_secs)
+
+    if return_diagnostics:
+        return hotcues, {"evidence": evidence, "candidates": candidates}
+    return hotcues
+
+
+def detect_cue_points(y, beat_timestamps, duration_secs, sr=SAMPLE_RATE, mode=None):
+    """
+    Central HotCue detection entry point with transparent A/B switching.
+    Default mode is 'legacy'. Set environment variable AUDIOHARMONIX_DSP_MODE='experimental'
+    or pass mode='experimental' to activate the experimental engine.
+    """
+    env_mode = os.getenv("AUDIOHARMONIX_DSP_MODE", "legacy").lower()
+    selected_mode = mode.lower() if mode is not None else env_mode
+
+    if selected_mode == "experimental":
+        return detect_cue_points_experimental(y, beat_timestamps, duration_secs, sr=sr)
+    else:
+        return detect_cue_points_legacy(y, beat_timestamps, duration_secs, sr=sr)
 
 def _sanitize_and_number_cues(cues, beat_timestamps, duration_secs):
     """Sorts cues chronologically, enforces bounds, filters near-duplicates, and assigns hotcue_num 1..8 with clean sequential labels"""
