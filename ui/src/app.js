@@ -1,87 +1,148 @@
 /**
- * AudioHarmonix Frontend Application Engine
- * Section 7: UI Component Logic, RGB Waveform Canvas, Modern Modals & Realtime API Sync
+ * AudioHarmonix 2.0 Frontend Application Engine
+ * Precise UX/UI Correction Pass
+ * - HotCue: Single [Save & Teach AI] action button (no duplicate Save button)
+ * - HotCue: Press-and-hold for +/-0.1s buttons
+ * - HotCue: Interactive drag directly on the waveform with live feedback & snap
+ * - Dividers: Double-click to restore default size on all resizers
+ * - Minimal Notifications: Cleaned all redundant toasts for visual actions
+ * - Table & Waveform: Independent column resizing, text ellipsis, and fluid canvas
  */
 
 const API_BASE = window.location.origin;
 
 let tracksData = [];
 let selectedTrack = null;
+let activeHarmonicFilter = '11A';
 let currentAudio = null;
 let isPlaying = false;
+let isLooping = false;
+let isShuffled = false;
 let batchPollInterval = null;
 let pendingDeleteTrack = null;
 let pendingSeekSec = null;
 let simulatedCurTime = 0;
-let simulatedInterval = null;
+let isDraggingScrubber = false;
 
-/// Waveform & Zoom & Beatgrid State
+// Waveform & Zoom & Beatgrid State
 let zoomLevel = 1.0;
 let showBeatgrid = true;
 let snapToGrid = true;
 let tapTimes = [];
 
-// DOM Elements
+// DOM Elements: Header & Navigation
+const btnShortcuts = document.getElementById("btn-shortcuts");
+const btnImport = document.getElementById("btn-import");
+const btnBatch = document.getElementById("btn-batch");
+const btnExportXml = document.getElementById("btn-export-xml");
+const btnCollapseSidebar = document.getElementById("btn-collapse-sidebar");
+
+const sidebarNav = document.getElementById("sidebar-nav");
+const collectionColumn = document.getElementById("collection-column");
+const resizerSidebar = document.getElementById("resizer-sidebar");
+const resizerCollection = document.getElementById("resizer-collection");
+const resizerWidgets = document.getElementById("resizer-widgets");
+const hotcueWidget = document.getElementById("hotcue-widget");
+const harmonicWidget = document.getElementById("harmonic-widget");
+
+const navCollection = document.getElementById("nav-collection");
+const navAnalyze = document.getElementById("nav-analyze");
+const navPlaylists = document.getElementById("nav-playlists");
+const navTags = document.getElementById("nav-tags");
+const navSettings = document.getElementById("nav-settings");
+
+// DOM Elements: Collection Column
 const searchInput = document.getElementById("search-input");
 const filterCamelot = document.getElementById("filter-camelot");
 const filterEnergy = document.getElementById("filter-energy");
 const trackTableBody = document.getElementById("track-table-body");
 const trackCount = document.getElementById("track-count");
+const collectionTable = document.getElementById("collection-table");
+const collectionTableHeader = document.getElementById("collection-table-header");
 
+// DOM Elements: Track Workspace Hero
+const workspaceArtwork = document.getElementById("workspace-artwork");
+const workspaceArtImg = document.getElementById("workspace-art-img");
+const workspaceArtInitials = document.getElementById("workspace-art-initials");
+const selectedTitle = document.getElementById("selected-title");
+const workspaceArtistSubtitle = document.getElementById("workspace-artist-subtitle");
+const heroKeyVal = document.getElementById("hero-key-val");
+const heroBpmVal = document.getElementById("hero-bpm-val");
+const heroEnergyVal = document.getElementById("hero-energy-val");
+
+// BPM & Calibration Toolbar
+const inputBpm = document.getElementById("input-bpm");
+const btnBpmHalf = document.getElementById("btn-bpm-half");
+const btnBpmDouble = document.getElementById("btn-bpm-double");
+const btnBpmTap = document.getElementById("btn-bpm-tap");
+const btnSetFirstBeat = document.getElementById("btn-set-first-beat");
+const btnGridNudgeLeft = document.getElementById("btn-grid-nudge-left");
+const btnGridNudgeRight = document.getElementById("btn-grid-nudge-right");
+const btnToggleBeatgrid = document.getElementById("btn-toggle-beatgrid");
+const btnToggleSnap = document.getElementById("btn-toggle-snap");
+
+// Structure Segment Bar
+const structureSegmentBar = document.getElementById("structure-segment-bar");
+
+// Waveform Stage
 const waveformCanvasContainer = document.getElementById("waveform-canvas-container");
 const waveformScrollWrapper = document.getElementById("waveform-scroll-wrapper");
 const waveformCanvas = document.getElementById("waveform-canvas");
 const playhead = document.getElementById("playhead");
 const cueOverlay = document.getElementById("cue-overlay");
-const selectedTitle = document.getElementById("selected-title");
-const selectedMeta = document.getElementById("selected-meta");
 const btnPlay = document.getElementById("btn-play");
 const timeDisplay = document.getElementById("time-display");
-
-// BPM & Toolbar DOM
-const inputBpm = document.getElementById("input-bpm");
-const btnBpmHalf = document.getElementById("btn-bpm-half");
-const btnBpmDouble = document.getElementById("btn-bpm-double");
-const btnBpmTap = document.getElementById("btn-bpm-tap");
-const btnToggleBeatgrid = document.getElementById("btn-toggle-beatgrid");
-const btnToggleSnap = document.getElementById("btn-toggle-snap");
+const timeRemainingDisplay = document.getElementById("time-remaining-display");
 const btnZoomIn = document.getElementById("btn-zoom-in");
 const btnZoomOut = document.getElementById("btn-zoom-out");
 const btnZoomReset = document.getElementById("btn-zoom-reset");
 const zoomLevelLabel = document.getElementById("zoom-level-label");
+const waveformMiniOverview = document.getElementById("waveform-mini-overview");
+const miniOverviewProgress = document.getElementById("mini-overview-progress");
+const miniOverviewHandle = document.getElementById("mini-overview-handle");
 
-// Grid 1.1 Alignment DOM
-const btnSetFirstBeat = document.getElementById("btn-set-first-beat");
-const btnGridNudgeLeft = document.getElementById("btn-grid-nudge-left");
-const btnGridNudgeRight = document.getElementById("btn-grid-nudge-right");
+// Dual Widgets: HotCues & Harmonic Mixing
+const hotcuePillsContainer = document.getElementById("hotcue-pills-container");
+const btnAddCuePlayhead = document.getElementById("btn-add-cue-playhead");
+const btnEditCues = document.getElementById("btn-edit-cues");
+const btnSaveTeachAi = document.getElementById("btn-save-teach-ai");
+const harmonicMatchCount = document.getElementById("harmonic-match-count");
+const harmonicMatchesList = document.getElementById("harmonic-matches-list");
+const activeFilterLabel = document.getElementById("active-filter-label");
+const harmonicFilterPills = document.getElementById("harmonic-filter-pills");
+const sidebarCamelotWheel = document.getElementById("sidebar-camelot-wheel");
 
-// Waveform Collapse DOM
-const waveformPanel = document.querySelector(".waveform-panel");
-const btnToggleWaveformCollapse = document.getElementById("btn-toggle-waveform-collapse");
+// Bottom Persistent Player Bar
+const playerArtDisc = document.getElementById("player-art-disc");
+const playerArtImg = document.getElementById("player-art-img");
+const playerArtText = document.getElementById("player-art-text");
+const playerTrackTitle = document.getElementById("player-track-title");
+const playerTrackArtist = document.getElementById("player-track-artist");
+const btnPlayerPlay = document.getElementById("btn-player-play");
+const btnPlayerPrev = document.getElementById("btn-player-prev");
+const btnPlayerNext = document.getElementById("btn-player-next");
+const btnPlayerShuffle = document.getElementById("btn-player-shuffle");
+const btnPlayerRepeat = document.getElementById("btn-player-repeat");
+const playerTimeCur = document.getElementById("player-time-cur");
+const playerTimeRem = document.getElementById("player-time-rem");
+const playerWaveformScrubber = document.getElementById("player-waveform-scrubber");
+const playerScrubberProgress = document.getElementById("player-scrubber-progress");
+const playerScrubberHandle = document.getElementById("player-scrubber-handle");
+const playerBadgeBpm = document.getElementById("player-badge-bpm");
+const playerBadgeKey = document.getElementById("player-badge-key");
+const playerBadgeEnergy = document.getElementById("player-badge-energy");
+const playerVolumeSlider = document.getElementById("player-volume-slider");
 
-// Header Buttons
-const btnImport = document.getElementById("btn-import");
-const btnBatch = document.getElementById("btn-batch");
-const btnExportXml = document.getElementById("btn-export-xml");
-
-// Delete Modal DOM
+// Modals
 const modalDeleteConfirm = document.getElementById("modal-delete-confirm");
 const btnCloseDeleteModal = document.getElementById("btn-close-delete-modal");
 const btnCancelDelete = document.getElementById("btn-cancel-delete");
 const btnConfirmDelete = document.getElementById("btn-confirm-delete");
 const deleteTrackTitleText = document.getElementById("delete-track-title-text");
 
-// Camelot Picker Modal DOM
-const modalCamelotPicker = document.getElementById("modal-camelot-picker");
-const btnToggleCamelotWheel = document.getElementById("btn-toggle-camelot-wheel");
-const btnCloseCamelotModal = document.getElementById("btn-close-camelot-modal");
-const btnClearCamelotFilter = document.getElementById("btn-clear-camelot-filter");
-const gridMinorKeys = document.getElementById("grid-minor-keys");
-const gridMajorKeys = document.getElementById("grid-major-keys");
-
-// Import Modal DOM
 const modalImport = document.getElementById("modal-import");
 const btnCloseImportModal = document.getElementById("btn-close-import-modal");
+const btnCloseImportFooter = document.getElementById("btn-close-import-footer");
 const dropzone = document.getElementById("dropzone");
 const filePicker = document.getElementById("file-picker");
 const importPathInput = document.getElementById("import-path-input");
@@ -91,54 +152,70 @@ const importAnalysisCard = document.getElementById("import-analysis-card");
 const importStatusTitle = document.getElementById("import-status-title");
 const importStatusStep = document.getElementById("import-status-step");
 
-// Batch Modal DOM
 const modalBatch = document.getElementById("modal-batch");
 const btnCloseBatchModal = document.getElementById("btn-close-batch-modal");
 const btnStartBatch = document.getElementById("btn-start-batch");
+const btnCancelBatch = document.getElementById("btn-cancel-batch");
+const batchModalTitle = document.getElementById("batch-modal-title");
+const batchModalDesc = document.getElementById("batch-modal-desc");
 const batchModalFile = document.getElementById("batch-modal-file");
 const batchModalPct = document.getElementById("batch-modal-pct");
 const batchModalProgressBar = document.getElementById("batch-modal-progress-bar");
 const batchModalCount = document.getElementById("batch-modal-count");
 const batchModalSpeed = document.getElementById("batch-modal-speed");
 const batchModalEta = document.getElementById("batch-modal-eta");
+const batchResultsSummary = document.getElementById("batch-results-summary");
 
-// Export Modal DOM
 const modalExport = document.getElementById("modal-export");
 const btnCloseExportModal = document.getElementById("btn-close-export-modal");
 const btnConfirmExport = document.getElementById("btn-confirm-export");
 const exportPathInput = document.getElementById("export-path-input");
 
-// Shortcuts Modal DOM
 const modalShortcuts = document.getElementById("modal-shortcuts");
-const btnShortcuts = document.getElementById("btn-shortcuts");
 const btnCloseShortcutsModal = document.getElementById("btn-close-shortcuts-modal");
 const btnCloseShortcutsFooter = document.getElementById("btn-close-shortcuts-footer");
 
-// Toast Container
 const toastContainer = document.getElementById("toast-container");
-
-// Status Footer
 const batchProgressContainer = document.getElementById("batch-progress-container");
 const batchProgressInner = document.getElementById("batch-progress-inner");
 const batchSpeed = document.getElementById("batch-speed");
 const batchCount = document.getElementById("batch-count");
 
-const CAMELOT_MINORS = [
-  { code: '1A', name: 'G#m / Abm' }, { code: '2A', name: 'D#m / Ebm' }, { code: '3A', name: 'A#m / Bbm' },
-  { code: '4A', name: 'Fm' },        { code: '5A', name: 'Cm' },         { code: '6A', name: 'Gm' },
-  { code: '7A', name: 'Dm' },        { code: '8A', name: 'Am' },         { code: '9A', name: 'Em' },
-  { code: '10A', name: 'Bm' },       { code: '11A', name: 'F#m' },       { code: '12A', name: 'C#m' }
+// Camelot 24-Position System Data
+const CAMELOT_KEYS_DATA = [
+  { num: 1,  minor: '1A',  minorName: 'G#m', major: '1B',  majorName: 'B',  color: '#06b6d4' },
+  { num: 2,  minor: '2A',  minorName: 'D#m', major: '2B',  majorName: 'F#', color: '#0ea5e9' },
+  { num: 3,  minor: '3A',  minorName: 'A#m', major: '3B',  majorName: 'C#', color: '#38bdf8' },
+  { num: 4,  minor: '4A',  minorName: 'Fm',  major: '4B',  majorName: 'G#', color: '#3b82f6' },
+  { num: 5,  minor: '5A',  minorName: 'Cm',  major: '5B',  majorName: 'D#', color: '#6366f1' },
+  { num: 6,  minor: '6A',  minorName: 'Gm',  major: '6B',  majorName: 'A#', color: '#8b5cf6' },
+  { num: 7,  minor: '7A',  minorName: 'Dm',  major: '7B',  majorName: 'F',  color: '#a855f7' },
+  { num: 8,  minor: '8A',  minorName: 'Am',  major: '8B',  majorName: 'C',  color: '#ec4899' },
+  { num: 9,  minor: '9A',  minorName: 'Em',  major: '9B',  majorName: 'G',  color: '#ef4444' },
+  { num: 10, minor: '10A', minorName: 'Bm',  major: '10B', majorName: 'D',  color: '#f97316' },
+  { num: 11, minor: '11A', minorName: 'F#m', major: '11B', majorName: 'A',  color: '#f59e0b' },
+  { num: 12, minor: '12A', minorName: 'C#m', major: '12B', majorName: 'E',  color: '#10b981' }
 ];
 
-const CAMELOT_MAJORS = [
-  { code: '1B', name: 'B' },  { code: '2B', name: 'F#' }, { code: '3B', name: 'Db / C#' },
-  { code: '4B', name: 'Ab' }, { code: '5B', name: 'Eb' }, { code: '6B', name: 'Bb' },
-  { code: '7B', name: 'F' },  { code: '8B', name: 'C' },  { code: '9B', name: 'G' },
-  { code: '10B', name: 'D' }, { code: '11B', name: 'A' }, { code: '12B', name: 'E' }
+const CUE_TYPES = [
+  "INTRO", "VERSE", "BUILDUP", "DROP", "BREAK", "OUTRO"
 ];
 
-/// Modern Toast Notification System
+function formatCleanCueType(rawType) {
+  if (!rawType) return "CUE";
+  const t = rawType.toString().toUpperCase().trim();
+  if (t.includes("INTRO") || t.includes("FIRST")) return "INTRO";
+  if (t.includes("BUILD")) return "BUILDUP";
+  if (t.includes("DROP")) return "DROP";
+  if (t.includes("BREAK")) return "BREAK";
+  if (t.includes("OUTRO")) return "OUTRO";
+  if (t.includes("VERSE")) return "VERSE";
+  return t.replace(/_\d+/g, "").replace("_", " ");
+}
+
+// Helper: Toast Notifications (Reserved for Async Outcomes & System Errors)
 function showToast(message, type = "info", duration = 4000) {
+  if (!toastContainer) return;
   const toast = document.createElement("div");
   toast.className = `toast ${type}`;
   toast.innerHTML = `
@@ -153,11 +230,67 @@ function showToast(message, type = "info", duration = 4000) {
   }, duration);
 }
 
+function escapeHtml(str) {
+  if (!str) return '';
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+}
+
+function getInitials(title) {
+  if (!title) return 'AH';
+  const clean = title.replace(/[^\w\s]/gi, '').trim();
+  const parts = clean.split(/\s+/);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+  return clean.slice(0, 2).toUpperCase() || 'AH';
+}
+
+function formatTime(secs) {
+  if (isNaN(secs) || secs < 0) secs = 0;
+  const m = Math.floor(secs / 60);
+  const s = Math.floor(secs % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+// Press-and-Hold helper for continuous increment/decrement (Requirement 1)
+function attachPressAndHold(buttonEl, stepFn) {
+  let holdTimeout = null;
+  let holdInterval = null;
+
+  const start = (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    // 1. Immediate single step on click
+    stepFn();
+
+    // 2. Start repeating interval after 250ms hold
+    holdTimeout = setTimeout(() => {
+      holdInterval = setInterval(() => {
+        stepFn();
+      }, 60);
+    }, 250);
+
+    const stop = () => {
+      if (holdTimeout) { clearTimeout(holdTimeout); holdTimeout = null; }
+      if (holdInterval) { clearInterval(holdInterval); holdInterval = null; }
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+    };
+
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
+  };
+
+  buttonEl.addEventListener("pointerdown", start);
+}
+
 // Fetch Tracks from Backend API
 async function loadTracks() {
-  const search = searchInput.value;
-  const camelot = filterCamelot.value;
-  const energy = filterEnergy.value;
+  const search = searchInput ? searchInput.value : "";
+  const camelot = filterCamelot ? filterCamelot.value : "";
+  const energy = filterEnergy ? filterEnergy.value : "1";
 
   try {
     const res = await fetch(`${API_BASE}/api/tracks?search=${encodeURIComponent(search)}&camelot=${camelot}&energy_min=${energy}`);
@@ -165,6 +298,14 @@ async function loadTracks() {
     if (data.status === "ok") {
       tracksData = data.tracks;
       renderTable(tracksData);
+      if (selectedTrack) {
+        const updated = tracksData.find(t => t.id === selectedTrack.id);
+        if (updated) {
+          selectedTrack = updated;
+        }
+      }
+      updateHarmonicMatchesForFilter(activeHarmonicFilter);
+      renderCircularCamelotWheel(sidebarCamelotWheel, selectedTrack, (k) => setHarmonicFilter(k));
     }
   } catch (err) {
     console.error("Error loading tracks:", err);
@@ -172,156 +313,163 @@ async function loadTracks() {
   }
 }
 
-// Render Track Table
+// Render Track Table (Square Artwork, Independent Resizable Columns, Ellipsis Truncation)
 function renderTable(tracks) {
+  if (!trackTableBody) return;
   trackTableBody.innerHTML = "";
-  trackCount.textContent = `${tracks.length} Tracks`;
+  if (trackCount) trackCount.textContent = `${tracks.length} Tracks`;
 
   if (tracks.length === 0) {
-    trackTableBody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:30px; color:#8a96ab;">No tracks analyzed yet. Click "Import Audio File" or "Analyze All (Batch)" to get started!</td></tr>`;
+    trackTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:30px; color:#64748b;">No tracks found. Import an audio file to begin.</td></tr>`;
     return;
   }
 
-  tracks.forEach((t, idx) => {
+  tracks.forEach((t) => {
     const tr = document.createElement("tr");
     tr.className = `track-row ${selectedTrack && selectedTrack.id === t.id ? 'selected' : ''}`;
 
-    const confVal = typeof t.key_confidence === 'number' ? t.key_confidence : 0.95;
-    const confPct = Math.round(confVal * 100);
-    let confColor = "#00e676"; // Green (>= 85%)
-    let confBg = "rgba(0, 230, 118, 0.15)";
-    if (confPct < 70) {
-      confColor = "#ff5252"; // Red (< 70%)
-      confBg = "rgba(255, 82, 82, 0.15)";
-    } else if (confPct < 85) {
-      confColor = "#ff9100"; // Orange (70% - 84%)
-      confBg = "rgba(255, 145, 0, 0.15)";
-    }
+    const initials = getInitials(t.title || t.file_name);
+    const keyClass = (t.camelot_key || '8a').toLowerCase();
+    const energyScore = (t.energy_score || 5).toFixed(1);
+    const artUrl = `${API_BASE}/api/artwork?id=${t.id}`;
 
-    const energyScore = t.energy_score || 5;
-    const energyColor = getEnergyColor(energyScore);
+    // Integer BPM presentation display
+    const bpmDisplay = t.bpm ? Math.round(t.bpm) : '---';
+
+    const artworkHtml = t.has_artwork
+      ? `<div class="table-artwork-square"><img src="${artUrl}" class="artwork-img" alt="" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" /><span class="artwork-initials" style="display:none;">${initials}</span></div>`
+      : `<div class="table-artwork-square"><span class="artwork-initials">${initials}</span></div>`;
 
     tr.innerHTML = `
-      <td>${idx + 1}</td>
       <td>
-        <div style="font-weight:600; color:var(--text-main);">${escapeHtml(t.title || t.file_name)}</div>
-        <div style="font-size:11px; color:var(--text-muted);">${escapeHtml(t.artist || 'Unknown')}</div>
-      </td>
-      <td>
-        <span style="font-family:monospace; font-weight:700;">${t.bpm ? t.bpm.toFixed(1) : '---'}</span>
-        ${t.is_variable_bpm ? '<span style="font-size:10px; color:#ff9100; margin-left:4px;">(VAR)</span>' : ''}
-      </td>
-      <td>
-        <span class="key-badge key-${t.camelot_key ? t.camelot_key.toLowerCase() : '8a'}">${t.camelot_key || '---'}</span>
-        <span style="font-size:11px; color:var(--text-muted); margin-left:4px;">${t.detected_key || ''}</span>
-      </td>
-      <td>
-        <div style="display:flex; align-items:center; gap:8px;">
-          <div style="flex:1; height:6px; background:#1b2230; border-radius:3px; overflow:hidden;">
-            <div style="width:${energyScore * 10}%; height:100%; background:${energyColor};"></div>
+        <div class="cell-track-info">
+          ${artworkHtml}
+          <div class="table-meta-box">
+            <div class="table-title" title="${escapeHtml(t.title || t.file_name)}">${escapeHtml(t.title || t.file_name)}</div>
           </div>
-          <span style="font-size:11px; font-weight:700; color:${energyColor};">${energyScore}/10</span>
         </div>
       </td>
       <td>
-        <span style="font-size:11px; font-weight:700; color:${confColor}; background:${confBg}; padding:2px 7px; border-radius:4px; display:inline-block;">${confPct}%</span>
+        <div class="table-artist-text" title="${escapeHtml(t.artist || 'Unknown Artist')}">${escapeHtml(t.artist || 'Unknown Artist')}</div>
       </td>
       <td>
-        <div style="display:flex; gap:6px;">
-          <button class="btn btn-secondary btn-table-play" style="padding:4px 8px; font-size:11px;" onclick="selectAndPlayTrack('${t.id}')">Play</button>
-          <button class="btn btn-secondary btn-table-delete" style="padding:4px 8px; font-size:11px; color:#ff5252;" onclick="openDeleteModal('${t.id}', '${escapeHtml(t.title || t.file_name)}')">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
-          </button>
-        </div>
+        <span class="key-badge key-${keyClass}">${t.camelot_key || '---'}</span>
+      </td>
+      <td>
+        <span style="font-family:var(--font-mono); font-weight:700;" title="Precise: ${(t.bpm || 0).toFixed(2)} BPM">${bpmDisplay}</span>
+      </td>
+      <td>
+        <span class="table-energy-num">${energyScore}</span>
       </td>
     `;
+
     tr.addEventListener("click", (e) => {
       if (!e.target.closest("button")) {
         selectTrack(t);
       }
     });
+
     trackTableBody.appendChild(tr);
   });
 }
 
-function escapeHtml(str) {
-  if (!str) return '';
-  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
-}
-
-function getEnergyColor(score) {
-  if (score <= 3) return "#00e5ff"; // 1-3: Chill / Ambient / Intro (Cyan)
-  if (score <= 5) return "#00e676"; // 4-5: Melodic / Groove (Green)
-  if (score <= 7) return "#ff9100"; // 6-7: Driving Club / Mainstage (Orange)
-  return "#ff1744";                // 8-10: Peak Energy / Festival Drop (Red)
-}
-
-// Prompt Delete Confirmation Modal
-function openDeleteModal(id, title) {
-  pendingDeleteTrack = { id, title };
-  deleteTrackTitleText.textContent = `"${title}"`;
-  modalDeleteConfirm.classList.remove("hidden");
-}
-
-btnCloseDeleteModal.addEventListener("click", () => {
-  modalDeleteConfirm.classList.add("hidden");
-  pendingDeleteTrack = null;
-});
-
-btnCancelDelete.addEventListener("click", () => {
-  modalDeleteConfirm.classList.add("hidden");
-  pendingDeleteTrack = null;
-});
-
-btnConfirmDelete.addEventListener("click", async () => {
-  if (!pendingDeleteTrack) return;
-  const { id, title } = pendingDeleteTrack;
-  modalDeleteConfirm.classList.add("hidden");
-  await executeDeleteTrack(id, title);
-  pendingDeleteTrack = null;
-});
-
-// Delete Track Function
-async function executeDeleteTrack(id, title) {
-  try {
-    const res = await fetch(`${API_BASE}/api/delete_track`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ track_id: id })
-    });
-    const data = await res.json();
-    if (data.status === "ok") {
-      showToast(`Track '${title}' removed from library.`, "info", 4000);
-      if (selectedTrack && selectedTrack.id === id) {
-        selectedTrack = null;
-        selectedTitle.textContent = "Select a track to preview waveform";
-        selectedMeta.textContent = "--- BPM | --- Key | --- Energy";
-      }
-      loadTracks();
-    } else {
-      showToast(`Delete Error: ${data.error}`, "error");
-    }
-  } catch (err) {
-    showToast(`Error deleting track: ${err.message}`, "error");
-  }
-}
-
-// Select Track & Render Waveform
+// Select Track & Update Workspace
 function selectTrack(track) {
   selectedTrack = track;
   renderTable(tracksData);
 
-  selectedTitle.textContent = `${track.title || track.file_name} - ${track.artist || 'Unknown Artist'}`;
-  
-  if (inputBpm) {
-    inputBpm.value = (track.bpm ? track.bpm : 120.0).toFixed(2);
-  }
-  selectedMeta.textContent = `Key: ${track.camelot_key} (${track.detected_key}) | Energy: [${track.energy_score}/10]`;
+  const initials = getInitials(track.title || track.file_name);
+  const artUrl = `${API_BASE}/api/artwork?id=${track.id}`;
 
+  // Update Workspace Artwork
+  if (workspaceArtImg && workspaceArtInitials) {
+    if (track.has_artwork) {
+      workspaceArtImg.src = artUrl;
+      workspaceArtImg.classList.remove("hidden");
+      workspaceArtInitials.style.display = "none";
+      workspaceArtImg.onerror = () => {
+        workspaceArtImg.classList.add("hidden");
+        workspaceArtInitials.style.display = "flex";
+      };
+    } else {
+      workspaceArtImg.classList.add("hidden");
+      workspaceArtInitials.style.display = "flex";
+      workspaceArtInitials.textContent = initials;
+    }
+  }
+
+  // Update Player Artwork
+  if (playerArtImg && playerArtText) {
+    if (track.has_artwork) {
+      playerArtImg.src = artUrl;
+      playerArtImg.classList.remove("hidden");
+      playerArtText.style.display = "none";
+      playerArtImg.onerror = () => {
+        playerArtImg.classList.add("hidden");
+        playerArtText.style.display = "flex";
+      };
+    } else {
+      playerArtImg.classList.add("hidden");
+      playerArtText.style.display = "flex";
+      playerArtText.textContent = initials;
+    }
+  }
+
+  const fullTitle = track.title || track.file_name;
+  if (selectedTitle) {
+    selectedTitle.textContent = fullTitle;
+    selectedTitle.title = fullTitle;
+    
+    // Check overflow for marquee hover animation
+    requestAnimationFrame(() => {
+      const isOverflow = selectedTitle.scrollWidth > selectedTitle.clientWidth;
+      selectedTitle.classList.toggle("is-overflowing", isOverflow);
+      if (isOverflow) {
+        const diff = selectedTitle.scrollWidth - selectedTitle.clientWidth;
+        selectedTitle.style.setProperty("--marquee-shift", `-${diff + 20}px`);
+      }
+    });
+  }
+
+  if (workspaceArtistSubtitle) workspaceArtistSubtitle.textContent = track.artist || 'Unknown Artist';
+  
+  if (playerTrackTitle) {
+    playerTrackTitle.textContent = fullTitle;
+    playerTrackTitle.title = fullTitle;
+  }
+  if (playerTrackArtist) playerTrackArtist.textContent = track.artist || 'Unknown Artist';
+
+  const keyStr = `${track.detected_key || ''} | ${track.camelot_key || '---'}`;
+  if (heroKeyVal) heroKeyVal.textContent = keyStr;
+  if (playerBadgeKey) playerBadgeKey.textContent = track.camelot_key || '---';
+
+  // Integer BPM presentation for player & hero
+  const bpmRaw = track.bpm || 120.0;
+  const bpmInt = Math.round(bpmRaw);
+  if (heroBpmVal) heroBpmVal.textContent = bpmInt.toString();
+  if (playerBadgeBpm) playerBadgeBpm.textContent = bpmInt.toString();
+  if (inputBpm) inputBpm.value = bpmRaw.toFixed(2);
+
+  const energyScore = (track.energy_score || 5).toFixed(1);
+  if (heroEnergyVal) heroEnergyVal.textContent = energyScore;
+  if (playerBadgeEnergy) playerBadgeEnergy.textContent = energyScore;
+
+  // Reset Zoom
+  zoomLevel = 1.0;
+  if (zoomLevelLabel) zoomLevelLabel.textContent = "1.0x";
+  if (btnZoomReset) btnZoomReset.textContent = "1.0x";
+
+  // Draw Visual Components
+  renderStructureSegments(track);
   drawRGBWaveform(track);
   renderCueMarkers(track);
-  renderCuePills(track);
-  updateCamelotWheel(track);
+  renderCueCards(track);
+  
+  // Set harmonic filter to selected track key initially
+  activeHarmonicFilter = track.camelot_key || '11A';
+  renderHarmonicFilterButtons(track);
+  updateHarmonicMatchesForFilter(activeHarmonicFilter);
+  renderCircularCamelotWheel(sidebarCamelotWheel, track, (k) => setHarmonicFilter(k));
 
   if (currentAudio) {
     currentAudio.pause();
@@ -330,146 +478,404 @@ function selectTrack(track) {
 
   isPlaying = false;
   stopPlayheadAnimation();
-  btnPlay.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>`;
+  updatePlayButtonIcons(false);
 
   currentAudio = new Audio(`${API_BASE}/audio/?id=${track.id}`);
+  currentAudio.volume = playerVolumeSlider ? parseFloat(playerVolumeSlider.value) : 0.9;
+  
   currentAudio.addEventListener("ended", () => {
-    isPlaying = false;
-    stopPlayheadAnimation();
-    btnPlay.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>`;
-    playhead.style.left = "0%";
-    pendingSeekSec = null;
-    simulatedCurTime = 0;
+    if (isLooping) {
+      currentAudio.currentTime = 0;
+      currentAudio.play();
+    } else {
+      isPlaying = false;
+      stopPlayheadAnimation();
+      updatePlayButtonIcons(false);
+      playhead.style.left = "0%";
+      if (miniOverviewProgress) miniOverviewProgress.style.width = "0%";
+      if (miniOverviewHandle) miniOverviewHandle.style.left = "0%";
+      if (playerScrubberProgress) playerScrubberProgress.style.width = "0%";
+      if (playerScrubberHandle) playerScrubberHandle.style.left = "0%";
+      simulatedCurTime = 0;
+    }
   });
 
   currentAudio.addEventListener("loadedmetadata", () => {
     if (pendingSeekSec !== null && currentAudio) {
-      try {
-        currentAudio.currentTime = pendingSeekSec;
-      } catch (e) {}
+      try { currentAudio.currentTime = pendingSeekSec; } catch (e) {}
     }
   });
 
   if (pendingSeekSec === null) {
     playhead.style.left = "0%";
-    timeDisplay.textContent = `00:00 / ${formatTime(track.duration_secs || 0)}`;
+    if (miniOverviewProgress) miniOverviewProgress.style.width = "0%";
+    if (miniOverviewHandle) miniOverviewHandle.style.left = "0%";
+    if (playerScrubberProgress) playerScrubberProgress.style.width = "0%";
+    if (playerScrubberHandle) playerScrubberHandle.style.left = "0%";
+    const totalDur = formatTime(track.duration_secs || 0);
+    if (timeDisplay) timeDisplay.textContent = "0:00";
+    if (timeRemainingDisplay) timeRemainingDisplay.textContent = `-${totalDur}`;
+    if (playerTimeCur) playerTimeCur.textContent = "0:00";
+    if (playerTimeRem) playerTimeRem.textContent = `-${totalDur}`;
   }
 }
 
-function selectAndPlayTrack(id) {
-  const tr = tracksData.find(t => t.id === id);
-  if (tr) {
-    selectTrack(tr);
-    togglePlay();
+function updatePlayButtonIcons(playing) {
+  const playSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>`;
+  const pauseSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`;
+
+  if (btnPlay) btnPlay.innerHTML = playing ? pauseSvg : playSvg;
+  if (btnPlayerPlay) btnPlayerPlay.innerHTML = playing ? pauseSvg : `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>`;
+}
+
+// Render Musical Structure Segments Bar Above Waveform
+function renderStructureSegments(track) {
+  if (!structureSegmentBar) return;
+  structureSegmentBar.innerHTML = "";
+
+  const duration = track.duration_secs || 180;
+  const cues = track.cues || [];
+
+  if (cues.length === 0) {
+    const defaultSegments = [
+      { name: "INTRO", cls: "seg-intro", pct: 15 },
+      { name: "VERSE", cls: "seg-verse", pct: 20 },
+      { name: "BUILD", cls: "seg-build", pct: 15 },
+      { name: "DROP 1", cls: "seg-drop", pct: 20 },
+      { name: "BREAKDOWN", cls: "seg-break", pct: 15 },
+      { name: "DROP 2", cls: "seg-drop2", pct: 10 },
+      { name: "OUTRO", cls: "seg-outro", pct: 5 }
+    ];
+    defaultSegments.forEach(s => {
+      const seg = document.createElement("div");
+      seg.className = `segment-pill ${s.cls}`;
+      seg.style.flex = `${s.pct}`;
+      seg.textContent = s.name;
+      structureSegmentBar.appendChild(seg);
+    });
+    return;
+  }
+
+  const sorted = [...cues].sort((a, b) => (a.position_secs || 0) - (b.position_secs || 0));
+  for (let i = 0; i < sorted.length; i++) {
+    const cur = sorted[i];
+    const nextSec = sorted[i + 1] ? sorted[i + 1].position_secs : duration;
+    const durSec = Math.max(1, nextSec - cur.position_secs);
+    const pct = Math.max(5, (durSec / duration) * 100);
+
+    const seg = document.createElement("div");
+    const cleanType = formatCleanCueType(cur.cue_type);
+    let cls = "seg-verse";
+    if (cleanType === "INTRO") cls = "seg-intro";
+    else if (cleanType === "BUILDUP") cls = "seg-build";
+    else if (cleanType === "DROP") cls = "seg-drop";
+    else if (cleanType === "BREAK") cls = "seg-break";
+    else if (cleanType === "OUTRO") cls = "seg-outro";
+
+    seg.className = `segment-pill ${cls}`;
+    seg.style.flex = `${pct}`;
+    seg.textContent = cleanType;
+    seg.title = `${cleanType} (${formatTime(cur.position_secs)}) - Click to jump`;
+    seg.addEventListener("click", () => {
+      seekToPosition(cur.position_secs / duration);
+    });
+    structureSegmentBar.appendChild(seg);
   }
 }
 
-// Update Camelot Harmonic Wheel Badges
-function updateCamelotWheel(track) {
-  const curKey = track.camelot_key || '8A';
-  const badgeCurrent = document.getElementById("badge-current");
-  const badgeRelative = document.getElementById("badge-relative");
-  const badgeSubdom = document.getElementById("badge-subdom");
-  const badgeDom = document.getElementById("badge-dom");
+// User-Controlled Horizontal Harmonic Filter (Section 7 Requirement)
+function renderHarmonicFilterButtons(track) {
+  if (!harmonicFilterPills) return;
+  harmonicFilterPills.innerHTML = "";
 
-  badgeCurrent.textContent = `Current: ${curKey} (${track.detected_key || ''})`;
-
-  const num = parseInt(curKey);
-  const letter = curKey.slice(-1);
+  const baseKey = track ? (track.camelot_key || '11A') : '11A';
+  const num = parseInt(baseKey) || 11;
+  const letter = baseKey.slice(-1) || 'A';
   const otherLetter = letter === "A" ? "B" : "A";
 
-  if (!isNaN(num)) {
-    const rel = `${num}${otherLetter}`;
-    const subdom = `${((num - 2 + 12) % 12) + 1}${letter}`;
-    const dom = `${((num % 12)) + 1}${letter}`;
+  const subdom = `${((num - 2 + 12) % 12) + 1}${letter}`;
+  const dom = `${((num % 12)) + 1}${letter}`;
+  const relative = `${num}${otherLetter}`;
 
-    badgeRelative.textContent = `Relative: ${rel}`;
-    badgeSubdom.textContent = `Subdominant: ${subdom}`;
-    badgeDom.textContent = `Dominant: ${dom}`;
+  const filterOptions = [
+    { key: subdom, label: `-1 (${subdom})` },
+    { key: baseKey, label: `Same (${baseKey})` },
+    { key: dom, label: `+1 (${dom})` },
+    { key: relative, label: `Relative (${relative})` }
+  ];
+
+  if (activeFilterLabel) activeFilterLabel.textContent = activeHarmonicFilter;
+
+  filterOptions.forEach(opt => {
+    const btn = document.createElement("button");
+    btn.className = `btn-harmonic-pill ${activeHarmonicFilter === opt.key ? 'active' : 'compatible'}`;
+    btn.textContent = opt.key;
+    btn.title = `Harmonic Filter: ${opt.label}`;
+
+    btn.addEventListener("click", () => {
+      setHarmonicFilter(opt.key);
+    });
+
+    harmonicFilterPills.appendChild(btn);
+  });
+}
+
+function setHarmonicFilter(key) {
+  activeHarmonicFilter = key;
+  if (activeFilterLabel) activeFilterLabel.textContent = key;
+  renderHarmonicFilterButtons(selectedTrack);
+  updateHarmonicMatchesForFilter(key);
+  renderCircularCamelotWheel(sidebarCamelotWheel, selectedTrack, (k) => setHarmonicFilter(k));
+}
+
+function updateHarmonicMatchesForFilter(filterKey) {
+  if (!harmonicMatchesList) return;
+  harmonicMatchesList.innerHTML = "";
+
+  const matches = tracksData.filter(t => (!selectedTrack || t.id !== selectedTrack.id) && t.camelot_key === filterKey);
+  if (harmonicMatchCount) harmonicMatchCount.textContent = `${matches.length} Matches Found (${filterKey})`;
+
+  if (matches.length === 0) {
+    harmonicMatchesList.innerHTML = `<span class="no-matches-text">No compatible tracks found in library for key ${filterKey}.</span>`;
+    return;
   }
-}
 
-// Render Camelot Wheel Interactive Grid Cells
-function renderCamelotGrid() {
-  gridMinorKeys.innerHTML = "";
-  gridMajorKeys.innerHTML = "";
+  matches.forEach(m => {
+    const item = document.createElement("div");
+    item.className = "harmonic-match-item";
+    const initials = getInitials(m.title || m.file_name);
+    const artUrl = `${API_BASE}/api/artwork?id=${m.id}`;
 
-  const selectedKey = filterCamelot.value;
+    const artworkHtml = m.has_artwork
+      ? `<div class="match-item-artwork-square"><img src="${artUrl}" class="artwork-img" alt="" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" /><span class="artwork-initials" style="display:none;">${initials}</span></div>`
+      : `<div class="match-item-artwork-square"><span class="artwork-initials">${initials}</span></div>`;
 
-  CAMELOT_MINORS.forEach(k => {
-    const cell = document.createElement("div");
-    cell.className = `camelot-key-cell ${selectedKey === k.code ? 'active' : ''}`;
-    cell.innerHTML = `
-      <span class="key-code" style="color:var(--cyan-glow);">${k.code}</span>
-      <span class="key-name">${k.name}</span>
+    item.innerHTML = `
+      <div class="match-item-left">
+        ${artworkHtml}
+        <div class="match-item-text">
+          <div class="match-item-title" title="${escapeHtml(m.title || m.file_name)}">${escapeHtml(m.title || m.file_name)}</div>
+          <div class="match-item-artist">${escapeHtml(m.artist || 'Unknown Artist')}</div>
+        </div>
+      </div>
+      <div class="match-item-key">${m.camelot_key}</div>
     `;
-    cell.addEventListener("click", () => {
-      filterCamelot.value = k.code;
-      modalCamelotPicker.classList.add("hidden");
-      loadTracks();
-      showToast(`Filtering library by Camelot key ${k.code} (${k.name})`, "info");
-    });
-    gridMinorKeys.appendChild(cell);
-  });
 
-  CAMELOT_MAJORS.forEach(k => {
-    const cell = document.createElement("div");
-    cell.className = `camelot-key-cell ${selectedKey === k.code ? 'active' : ''}`;
-    cell.innerHTML = `
-      <span class="key-code" style="color:var(--pink-glow);">${k.code}</span>
-      <span class="key-name">${k.name}</span>
-    `;
-    cell.addEventListener("click", () => {
-      filterCamelot.value = k.code;
-      modalCamelotPicker.classList.add("hidden");
-      loadTracks();
-      showToast(`Filtering library by Camelot key ${k.code} (${k.name})`, "info");
+    item.addEventListener("click", () => {
+      selectTrack(m);
     });
-    gridMajorKeys.appendChild(cell);
+
+    harmonicMatchesList.appendChild(item);
   });
 }
 
-// Draw 3-Band RGB Waveform Canvas with Beatgrid & Dynamic Zoom (Responsive, No Right-Edge Cutoff)
+// Single Source of Truth for Circular Camelot Wheel SVG (Sidebar Integration)
+function renderCircularCamelotWheel(svgElement, track, onKeyClick) {
+  if (!svgElement) return;
+  svgElement.innerHTML = "";
+
+  const curKey = activeHarmonicFilter || (track ? (track.camelot_key || '11A') : '11A');
+  const num = parseInt(curKey) || 11;
+  const letter = curKey.slice(-1) || 'A';
+  const otherLetter = letter === "A" ? "B" : "A";
+
+  const compatibleKeys = new Set([
+    curKey,
+    `${num}${otherLetter}`,
+    `${((num - 2 + 12) % 12) + 1}${letter}`,
+    `${((num % 12)) + 1}${letter}`
+  ]);
+
+  const cx = 100;
+  const cy = 100;
+  const rOuterA = 96;
+  const rInnerA = 68;
+  const rOuterB = 67;
+  const rInnerB = 40;
+  const rHub = 38;
+
+  function createSectorPath(startAngleDeg, endAngleDeg, rIn, rOut) {
+    const startRad = (startAngleDeg - 90) * (Math.PI / 180);
+    const endRad = (endAngleDeg - 90) * (Math.PI / 180);
+
+    const x1 = cx + rOut * Math.cos(startRad);
+    const y1 = cy + rOut * Math.sin(startRad);
+    const x2 = cx + rOut * Math.cos(endRad);
+    const y2 = cy + rOut * Math.sin(endRad);
+    const x3 = cx + rIn * Math.cos(endRad);
+    const y3 = cy + rIn * Math.sin(endRad);
+    const x4 = cx + rIn * Math.cos(startRad);
+    const y4 = cy + rIn * Math.sin(startRad);
+
+    const largeArc = (endAngleDeg - startAngleDeg) > 180 ? 1 : 0;
+    return `M ${x1} ${y1} A ${rOut} ${rOut} 0 ${largeArc} 1 ${x2} ${y2} L ${x3} ${y3} A ${rIn} ${rIn} 0 ${largeArc} 0 ${x4} ${y4} Z`;
+  }
+
+  // Draw 12 Sectors
+  for (let i = 0; i < 12; i++) {
+    const keyData = CAMELOT_KEYS_DATA[i];
+    const keyNum = keyData.num;
+    const centerDeg = (keyNum % 12) * 30;
+    const startDeg = centerDeg - 14.5;
+    const endDeg = centerDeg + 14.5;
+
+    // --- Outer Ring: Minor Key (A) ---
+    const isCurA = (curKey === keyData.minor);
+    const isCompatA = compatibleKeys.has(keyData.minor);
+    const pathA = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    pathA.setAttribute("d", createSectorPath(startDeg, endDeg, rInnerA, rOuterA));
+    pathA.setAttribute("class", "camelot-sector");
+    pathA.setAttribute("fill", keyData.color);
+    pathA.setAttribute("fill-opacity", isCurA ? "1.0" : (isCompatA ? "0.80" : "0.22"));
+    pathA.setAttribute("stroke", isCurA ? "#ffffff" : (isCompatA ? "#38bdf8" : "rgba(255,255,255,0.1)"));
+    pathA.setAttribute("stroke-width", isCurA ? "2" : (isCompatA ? "1.5" : "0.5"));
+
+    const titleA = document.createElementNS("http://www.w3.org/2000/svg", "title");
+    titleA.textContent = `${keyData.minor} (${keyData.minorName}) - ${isCurA ? 'Active Filter Key' : (isCompatA ? 'Harmonic Match' : 'Incompatible')}`;
+    pathA.appendChild(titleA);
+
+    pathA.addEventListener("click", () => {
+      if (onKeyClick) onKeyClick(keyData.minor);
+    });
+
+    svgElement.appendChild(pathA);
+
+    // Text Label A
+    const midRadA = (centerDeg - 90) * (Math.PI / 180);
+    const textRA = (rOuterA + rInnerA) / 2;
+    const txA = cx + textRA * Math.cos(midRadA);
+    const tyA = cy + textRA * Math.sin(midRadA);
+
+    const textA = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    textA.setAttribute("x", txA.toString());
+    textA.setAttribute("y", (tyA + 3.5).toString());
+    textA.setAttribute("text-anchor", "middle");
+    textA.setAttribute("fill", isCurA ? "#000000" : "#ffffff");
+    textA.setAttribute("font-size", "9");
+    textA.setAttribute("font-weight", isCurA || isCompatA ? "800" : "600");
+    textA.setAttribute("font-family", "JetBrains Mono, monospace");
+    textA.setAttribute("pointer-events", "none");
+    textA.textContent = keyData.minor;
+    svgElement.appendChild(textA);
+
+    // --- Inner Ring: Major Key (B) ---
+    const isCurB = (curKey === keyData.major);
+    const isCompatB = compatibleKeys.has(keyData.major);
+    const pathB = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    pathB.setAttribute("d", createSectorPath(startDeg, endDeg, rInnerB, rOuterB));
+    pathB.setAttribute("class", "camelot-sector");
+    pathB.setAttribute("fill", keyData.color);
+    pathB.setAttribute("fill-opacity", isCurB ? "1.0" : (isCompatB ? "0.80" : "0.22"));
+    pathB.setAttribute("stroke", isCurB ? "#ffffff" : (isCompatB ? "#38bdf8" : "rgba(255,255,255,0.1)"));
+    pathB.setAttribute("stroke-width", isCurB ? "2" : (isCompatB ? "1.5" : "0.5"));
+
+    const titleB = document.createElementNS("http://www.w3.org/2000/svg", "title");
+    titleB.textContent = `${keyData.major} (${keyData.majorName}) - ${isCurB ? 'Active Filter Key' : (isCompatB ? 'Harmonic Match' : 'Incompatible')}`;
+    pathB.appendChild(titleB);
+
+    pathB.addEventListener("click", () => {
+      if (onKeyClick) onKeyClick(keyData.major);
+    });
+
+    svgElement.appendChild(pathB);
+
+    // Text Label B
+    const textRB = (rOuterB + rInnerB) / 2;
+    const txB = cx + textRB * Math.cos(midRadA);
+    const tyB = cy + textRB * Math.sin(midRadA);
+
+    const textB = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    textB.setAttribute("x", txB.toString());
+    textB.setAttribute("y", (tyB + 3).toString());
+    textB.setAttribute("text-anchor", "middle");
+    textB.setAttribute("fill", isCurB ? "#000000" : "#cbd5e1");
+    textB.setAttribute("font-size", "8");
+    textB.setAttribute("font-weight", isCurB || isCompatB ? "800" : "600");
+    textB.setAttribute("font-family", "JetBrains Mono, monospace");
+    textB.setAttribute("pointer-events", "none");
+    textB.textContent = keyData.major;
+    svgElement.appendChild(textB);
+  }
+
+  // Center Hub Circle
+  const hub = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+  hub.setAttribute("cx", cx.toString());
+  hub.setAttribute("cy", cy.toString());
+  hub.setAttribute("r", rHub.toString());
+  hub.setAttribute("fill", "#11151e");
+  hub.setAttribute("stroke", "rgba(255,255,255,0.15)");
+  hub.setAttribute("stroke-width", "1.5");
+  svgElement.appendChild(hub);
+
+  // Hub Center Text
+  const hubTextKey = document.createElementNS("http://www.w3.org/2000/svg", "text");
+  hubTextKey.setAttribute("x", cx.toString());
+  hubTextKey.setAttribute("y", (cy - 3).toString());
+  hubTextKey.setAttribute("text-anchor", "middle");
+  hubTextKey.setAttribute("fill", "#38bdf8");
+  hubTextKey.setAttribute("font-size", "13");
+  hubTextKey.setAttribute("font-weight", "800");
+  hubTextKey.setAttribute("font-family", "JetBrains Mono, monospace");
+  hubTextKey.textContent = curKey;
+  svgElement.appendChild(hubTextKey);
+
+  const hubTextSub = document.createElementNS("http://www.w3.org/2000/svg", "text");
+  hubTextSub.setAttribute("x", cx.toString());
+  hubTextSub.setAttribute("y", (cy + 12).toString());
+  hubTextSub.setAttribute("text-anchor", "middle");
+  hubTextSub.setAttribute("fill", "#94a3b8");
+  hubTextSub.setAttribute("font-size", "8.5");
+  hubTextSub.setAttribute("font-weight", "600");
+  hubTextSub.setAttribute("font-family", "Inter, sans-serif");
+  hubTextSub.textContent = track ? (track.detected_key || "KEY") : "KEY";
+  svgElement.appendChild(hubTextSub);
+}
+
+// Draw 3-Band RGB Waveform Canvas with Scalable Zoom & Fluid 100% Width
 function drawRGBWaveform(track) {
   if (!waveformCanvasContainer || !waveformCanvas) return;
 
   const containerRect = waveformCanvasContainer.getBoundingClientRect();
   const baseWidth = Math.round(containerRect.width || waveformCanvasContainer.clientWidth || 900);
-  const width = Math.max(baseWidth, Math.round(baseWidth * (zoomLevel > 1.0 ? zoomLevel : 1.0)));
-  const height = 100;
+  const totalWidth = Math.max(baseWidth, Math.round(baseWidth * zoomLevel));
+  const height = 125;
 
   if (waveformScrollWrapper) {
-    waveformScrollWrapper.style.width = zoomLevel > 1.0 ? `${width}px` : "100%";
+    waveformScrollWrapper.style.width = `${totalWidth}px`;
   }
-  waveformCanvas.width = width;
+  waveformCanvas.width = totalWidth;
   waveformCanvas.height = height;
-  waveformCanvas.style.width = zoomLevel > 1.0 ? `${width}px` : "100%";
+  waveformCanvas.style.width = `${totalWidth}px`;
   waveformCanvas.style.height = `${height}px`;
 
+  if (cueOverlay) {
+    cueOverlay.style.width = `${totalWidth}px`;
+  }
+
   const ctx = waveformCanvas.getContext("2d");
-  ctx.clearRect(0, 0, width, height);
+  ctx.clearRect(0, 0, totalWidth, height);
 
-  ctx.fillStyle = "#06080b";
-  ctx.fillRect(0, 0, width, height);
+  ctx.fillStyle = "#090c13";
+  ctx.fillRect(0, 0, totalWidth, height);
 
-  // Center Line
-  ctx.strokeStyle = "rgba(42, 50, 69, 0.4)";
+  // Center Zero-Crossing Line
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(0, height / 2);
-  ctx.lineTo(width, height / 2);
+  ctx.lineTo(totalWidth, height / 2);
   ctx.stroke();
 
-  // 1. Draw Beatgrid Lines if enabled
+  // Draw Beatgrid Lines if enabled
   if (showBeatgrid && track && (track.bpm || 0) > 0) {
-    drawBeatgridLines(ctx, track, width, height);
+    drawBeatgridLines(ctx, track, totalWidth, height);
   }
 
   const wf = track ? track.waveform_peaks : null;
 
   if (wf && wf.low && wf.low.length > 0) {
     const numPoints = wf.low.length;
-    const barWidth = width / numPoints;
+    const barWidth = totalWidth / numPoints;
 
     for (let i = 0; i < numPoints; i++) {
       const x = i * barWidth;
@@ -477,37 +883,36 @@ function drawRGBWaveform(track) {
       const midVal = wf.mid ? wf.mid[i] || 0 : 0;
       const highVal = wf.high ? wf.high[i] || 0 : 0;
 
-      const hLow = lowVal * (height * 0.92);
-      const hMid = midVal * (height * 0.72);
-      const hHigh = highVal * (height * 0.52);
+      const hLow = lowVal * (height * 0.90);
+      const hMid = midVal * (height * 0.70);
+      const hHigh = highVal * (height * 0.50);
 
-      // Layer 1: Highs (Percussion & Cymbals) - Cyan
+      // Layer 1: Highs (Percussion & Cymbals) - Indigo / Purple
       if (hHigh > 0) {
-        ctx.fillStyle = "rgba(64, 196, 255, 0.60)";
-        ctx.fillRect(x, (height / 2) - (hHigh / 2), Math.max(1, barWidth - 0.4), hHigh);
+        ctx.fillStyle = "rgba(139, 92, 246, 0.70)";
+        ctx.fillRect(x, (height / 2) - (hHigh / 2), Math.max(1, barWidth - 0.3), hHigh);
       }
 
-      // Layer 2: Mids (Vocals & Instruments) - Green
+      // Layer 2: Mids (Vocals & Leads) - Cyan / Green
       if (hMid > 0) {
-        ctx.fillStyle = "rgba(105, 240, 174, 0.70)";
-        ctx.fillRect(x, (height / 2) - (hMid / 2), Math.max(1, barWidth - 0.4), hMid);
+        ctx.fillStyle = "rgba(6, 182, 212, 0.80)";
+        ctx.fillRect(x, (height / 2) - (hMid / 2), Math.max(1, barWidth - 0.3), hMid);
       }
 
-      // Layer 3: Lows (Sub & Bass) - Red / Pink
+      // Layer 3: Lows (Sub & Kick) - Red / Coral
       if (hLow > 0) {
-        ctx.fillStyle = "rgba(255, 82, 82, 0.95)";
-        ctx.fillRect(x, (height / 2) - (hLow / 2), Math.max(1, barWidth - 0.4), hLow);
+        ctx.fillStyle = "rgba(239, 68, 68, 0.95)";
+        ctx.fillRect(x, (height / 2) - (hLow / 2), Math.max(1, barWidth - 0.3), hLow);
       }
     }
   } else {
-    ctx.fillStyle = "#8a96ab";
+    ctx.fillStyle = "#64748b";
     ctx.font = "12px Inter, sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText("Select an analyzed track to render waveform", width / 2, height / 2 + 4);
+    ctx.fillText("Select an analyzed track to render waveform", totalWidth / 2, height / 2 + 4);
   }
 }
 
-// Draw Beatgrid Lines with Bar Downbeats & Phrase Markers
 function drawBeatgridLines(ctx, track, width, height) {
   const bpm = track.bpm || 120.0;
   const duration = track.duration_secs || 180.0;
@@ -538,60 +943,46 @@ function drawBeatgridLines(ctx, track, width, height) {
     const isBarStart = (beat % 4 === 0);
 
     if (isPhraseDownbeat) {
-      // 32-beat phrase line (EDM major section change) - Purple neon
-      ctx.strokeStyle = "rgba(213, 0, 249, 0.85)";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, height);
-      ctx.stroke();
-
-      ctx.fillStyle = "#d500f9";
-      ctx.font = "bold 9px monospace";
-      ctx.fillText(`${barNum}.1`, x, 11);
-    } else if (isMajorBar) {
-      // 16-beat bar line - Cyan neon
-      ctx.strokeStyle = "rgba(0, 229, 255, 0.75)";
+      ctx.strokeStyle = "rgba(168, 85, 247, 0.85)";
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.moveTo(x, 0);
       ctx.lineTo(x, height);
       ctx.stroke();
 
-      ctx.fillStyle = "#00e5ff";
+      ctx.fillStyle = "#c084fc";
       ctx.font = "bold 9px monospace";
       ctx.fillText(`${barNum}.1`, x, 11);
-    } else if (isBarStart) {
-      // Regular 4-beat Bar line
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.40)";
-      ctx.lineWidth = 1;
+    } else if (isMajorBar) {
+      ctx.strokeStyle = "rgba(6, 182, 212, 0.75)";
+      ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.moveTo(x, 0);
       ctx.lineTo(x, height);
       ctx.stroke();
 
-      if (zoomLevel >= 2.0) {
-        ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
-        ctx.font = "8px monospace";
-        ctx.fillText(`${barNum}`, x, 10);
-      }
-    } else {
-      // Sub-beat lines (visible at higher zoom levels)
-      if (zoomLevel >= 1.5) {
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.12)";
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(x, 14);
-        ctx.lineTo(x, height - 14);
-        ctx.stroke();
-      }
+      ctx.fillStyle = "#22d3ee";
+      ctx.font = "bold 9px monospace";
+      ctx.fillText(`${barNum}.1`, x, 11);
+    } else if (isBarStart) {
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.35)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, height);
+      ctx.stroke();
+    } else if (zoomLevel >= 1.5) {
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x, 14);
+      ctx.lineTo(x, height - 14);
+      ctx.stroke();
     }
   }
-
   ctx.restore();
 }
 
-// Snap timestamp to nearest beatgrid beat
 function snapTimestampToBeat(sec, track) {
   if (!snapToGrid || !track || !track.bpm || track.bpm <= 0) return sec;
   const bpm = track.bpm;
@@ -608,69 +999,69 @@ function snapTimestampToBeat(sec, track) {
   return Math.max(0, Math.min(track.duration_secs || 180, snapped));
 }
 
-// Enhanced Zoom Management with Cursor & Needle Anchor Positioning
-function setZoom(newZoom, anchorOptions = {}) {
-  const oldZoom = zoomLevel;
-  const targetZoom = Math.max(1.0, Math.min(16.0, parseFloat(newZoom.toFixed(1))));
-  if (targetZoom === oldZoom && zoomLevel === targetZoom) return;
+// Waveform Zoom & Shift+Scroll Pan
+function handleWaveformWheel(e) {
+  if (!selectedTrack) return;
+  e.preventDefault();
 
-  const duration = (selectedTrack ? selectedTrack.duration_secs : 180) || 180;
-  const container = waveformCanvasContainer;
-  const viewportWidth = container ? container.clientWidth : 900;
-  const oldTotalWidth = waveformCanvas ? waveformCanvas.width : viewportWidth;
-
-  // Determine normalized anchor point [0, 1]
-  let anchorPct = 0;
-  let viewportOffsetPx = viewportWidth / 2;
-
-  if (anchorOptions.mouseClientX && container) {
-    // 1. Mouse-anchored Zoom (Ctrl + Wheel): keep the audio timestamp under the mouse stationary
-    const rect = container.getBoundingClientRect();
-    viewportOffsetPx = anchorOptions.mouseClientX - rect.left;
-    const oldAbsoluteX = container.scrollLeft + viewportOffsetPx;
-    anchorPct = oldTotalWidth > 0 ? (oldAbsoluteX / oldTotalWidth) : 0;
-  } else {
-    // 2. Needle/Playhead-anchored Zoom (Buttons + / - / 0 and Keyboard shortcuts): center the needle
-    const curPlayheadSec = getCurrentPlayheadSec();
-    anchorPct = Math.max(0, Math.min(1, curPlayheadSec / duration));
-    viewportOffsetPx = viewportWidth / 2;
+  // Shift + Scroll -> Pan horizontally
+  if (e.shiftKey) {
+    if (waveformCanvasContainer) {
+      waveformCanvasContainer.scrollLeft += e.deltaY;
+    }
+    return;
   }
 
-  anchorPct = Math.max(0, Math.min(1, anchorPct));
+  // Normal Scroll -> Zoom anchored around mouse position
+  const container = waveformCanvasContainer;
+  const containerRect = container.getBoundingClientRect();
+  const mouseX = Math.max(0, Math.min(containerRect.width, e.clientX - containerRect.left));
+  const scrollLeft = container.scrollLeft;
+  const currentTotalWidth = waveformCanvas.width || containerRect.width;
 
-  // Apply new zoom level
-  zoomLevel = targetZoom;
+  const anchorRatio = (scrollLeft + mouseX) / currentTotalWidth;
+
+  const zoomFactor = e.deltaY < 0 ? 1.25 : (1 / 1.25);
+  const newZoom = Math.max(1.0, Math.min(16.0, parseFloat((zoomLevel * zoomFactor).toFixed(2))));
+  if (newZoom === zoomLevel) return;
+
+  zoomLevel = newZoom;
   if (zoomLevelLabel) zoomLevelLabel.textContent = `${zoomLevel.toFixed(1)}x`;
+  if (btnZoomReset) btnZoomReset.textContent = `${zoomLevel.toFixed(1)}x`;
+
+  drawRGBWaveform(selectedTrack);
+  renderCueMarkers(selectedTrack);
+
+  const newTotalWidth = waveformCanvas.width;
+  const targetScrollLeft = (anchorRatio * newTotalWidth) - mouseX;
+  container.scrollLeft = Math.max(0, Math.min(newTotalWidth - container.clientWidth, targetScrollLeft));
+}
+
+function setZoom(newZoom) {
+  zoomLevel = Math.max(1.0, Math.min(16.0, parseFloat(newZoom.toFixed(1))));
+  
+  if (zoomLevelLabel) zoomLevelLabel.textContent = `${zoomLevel.toFixed(1)}x`;
+  if (btnZoomReset) btnZoomReset.textContent = `${zoomLevel.toFixed(1)}x`;
 
   if (selectedTrack) {
+    const curSec = getCurrentPlayheadSec();
+    const duration = selectedTrack.duration_secs || 180;
+    
     drawRGBWaveform(selectedTrack);
     renderCueMarkers(selectedTrack);
-  }
 
-  // Adjust scrollLeft so anchor point remains exactly in place
-  if (container && waveformCanvas) {
-    const newTotalWidth = waveformCanvas.width;
-    const newAnchorAbsoluteX = anchorPct * newTotalWidth;
-    const targetScrollLeft = newAnchorAbsoluteX - viewportOffsetPx;
-    container.scrollLeft = Math.max(0, Math.min(newTotalWidth - viewportWidth, targetScrollLeft));
+    if (waveformCanvasContainer && waveformCanvas) {
+      const containerWidth = waveformCanvasContainer.clientWidth;
+      const totalWidth = waveformCanvas.width;
+      const playheadPx = (curSec / duration) * totalWidth;
+      waveformCanvasContainer.scrollLeft = playheadPx - (containerWidth / 2);
+    }
   }
 }
 
-// HotCue Studio & Active Learning DOM Elements
-const hotcuePillsContainer = document.getElementById("hotcue-pills-container");
-const btnAddCuePlayhead = document.getElementById("btn-add-cue-playhead");
-const btnSaveTeachAi = document.getElementById("btn-save-teach-ai");
-
-const CUE_TYPES = [
-  "FIRST_BEAT", "INTRO", "BUILDUP", "DROP_1", "BREAK_1", 
-  "DROP_2", "BREAK_2", "DROP_3", "VERSE", "OUTRO"
-];
-
-let activeDraggedCue = null;
-let activeDraggedEl = null;
-
-// Render Cue Points Markers Overlay with Interactive Drag & Drop
+// Render Cue Markers Overlay with Interactive Dragging (Requirement 3 & 4)
 function renderCueMarkers(track) {
+  if (!cueOverlay) return;
   cueOverlay.innerHTML = "";
   if (!track || !track.cues) return;
 
@@ -678,269 +1069,257 @@ function renderCueMarkers(track) {
   const validCues = track.cues.filter(c => typeof c.position_secs === 'number' && c.position_secs >= 0 && c.position_secs <= duration);
 
   validCues.forEach((c, idx) => {
+    const letter = String.fromCharCode(65 + idx);
+    const padNum = (idx % 8) + 1;
     const pct = Math.min(100, Math.max(0, (c.position_secs / duration) * 100));
-    const cueTypeClass = (c.cue_type || "cue").toLowerCase();
+    const cleanType = formatCleanCueType(c.cue_type);
 
-    const marker = document.createElement("div");
-    marker.className = `cue-marker cue-${cueTypeClass}`;
-    marker.style.left = `${pct}%`;
-    marker.title = `HotCue ${idx + 1}: ${c.cue_type} (${formatTime(c.position_secs)}) - Drag to reposition`;
+    const cueMarkerWrap = document.createElement("div");
+    cueMarkerWrap.className = "waveform-cue-marker-wrap";
+    cueMarkerWrap.style.left = `${pct}%`;
+    cueMarkerWrap.title = `HotCue ${letter}: ${cleanType} (${formatTime(c.position_secs)}) - Click & drag to move`;
 
-    const label = document.createElement("div");
-    label.className = `cue-label cue-${cueTypeClass}`;
-    label.style.left = `${pct}%`;
-    label.textContent = `${c.cue_type || "CUE"} ${formatTime(c.position_secs)}`;
-    label.title = "Drag to reposition";
+    cueMarkerWrap.innerHTML = `
+      <div class="waveform-cue-flag pad-${padNum}">
+        <span class="flag-letter">${letter}</span>
+        <span class="flag-type">${cleanType}</span>
+      </div>
+      <div class="waveform-cue-line pad-border-${padNum}"></div>
+    `;
 
-    const startDrag = (e) => {
+    // Make cue marker draggable directly on the waveform (Requirement 3 & 4)
+    cueMarkerWrap.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
       e.stopPropagation();
       e.preventDefault();
-      activeDraggedCue = c;
-      activeDraggedEl = { marker, label };
-      marker.classList.add("dragging");
-      label.classList.add("dragging");
 
-      const scrollWrapper = document.getElementById("waveform-scroll-wrapper");
-      const container = document.getElementById("waveform-canvas-container");
+      cueMarkerWrap.classList.add("is-dragging");
+      document.querySelectorAll(".waveform-cue-marker-wrap").forEach(m => m.classList.remove("is-selected"));
+      cueMarkerWrap.classList.add("is-selected");
 
-      const onMouseMove = (moveEvent) => {
-        if (!activeDraggedCue) return;
-        const wrapperRect = scrollWrapper ? scrollWrapper.getBoundingClientRect() : (container ? container.getBoundingClientRect() : null);
-        if (!wrapperRect || wrapperRect.width <= 0) return;
+      // Highlight corresponding row in HotCue Studio
+      document.querySelectorAll(".hotcue-pill-row").forEach((r, rIdx) => {
+        r.classList.toggle("active", rIdx === idx);
+      });
 
-        const curX = moveEvent.clientX - wrapperRect.left;
-        let newPct = Math.min(1, Math.max(0, curX / wrapperRect.width));
-        let newSec = parseFloat((newPct * duration).toFixed(3));
+      const container = waveformCanvasContainer;
+      const scrollWrapper = waveformScrollWrapper || container;
+
+      const onMove = (moveEvt) => {
+        const rect = scrollWrapper.getBoundingClientRect();
+        const mouseX = Math.max(0, Math.min(rect.width, moveEvt.clientX - rect.left));
+        let rawSec = (mouseX / rect.width) * duration;
 
         if (snapToGrid) {
-          newSec = snapTimestampToBeat(newSec, track);
-          newPct = Math.min(1, Math.max(0, newSec / duration));
+          rawSec = snapTimestampToBeat(rawSec, track);
+        } else {
+          rawSec = parseFloat(rawSec.toFixed(3));
+        }
+        rawSec = Math.max(0, Math.min(duration, rawSec));
+
+        c.position_secs = rawSec;
+        const newPct = (rawSec / duration) * 100;
+        cueMarkerWrap.style.left = `${newPct}%`;
+
+        // Update live time readout in HotCue Studio
+        const rows = document.querySelectorAll(".hotcue-pill-row");
+        if (rows[idx]) {
+          const timeEl = rows[idx].querySelector(".hotcue-pill-time");
+          if (timeEl) timeEl.textContent = formatTime(rawSec);
         }
 
-        activeDraggedCue.position_secs = newSec;
-        marker.style.left = `${newPct * 100}%`;
-        label.style.left = `${newPct * 100}%`;
-        label.textContent = `${activeDraggedCue.cue_type} ${formatTime(newSec)}`;
-
-        // Update corresponding pill time in real time if visible
-        const cueIdx = track.cues.indexOf(activeDraggedCue);
-        if (cueIdx >= 0 && hotcuePillsContainer) {
-          const pills = hotcuePillsContainer.querySelectorAll('.cue-pill');
-          if (pills[cueIdx]) {
-            const timeEl = pills[cueIdx].querySelector('.cue-pill-time');
-            if (timeEl) timeEl.textContent = formatTime(newSec);
-          }
-        }
-
-        // Real-time audio seek preview while dragging (preserves playback state)
-        seekToPosition(newPct);
+        // Live flag tooltip
+        const typeEl = cueMarkerWrap.querySelector(".flag-type");
+        if (typeEl) typeEl.textContent = `${formatCleanCueType(c.cue_type)} ${formatTime(rawSec)}`;
       };
 
-      const onMouseUp = () => {
-        window.removeEventListener("mousemove", onMouseMove);
-        window.removeEventListener("mouseup", onMouseUp);
-        if (activeDraggedCue) {
-          marker.classList.remove("dragging");
-          label.classList.remove("dragging");
-          activeDraggedCue = null;
-          activeDraggedEl = null;
+      const onUp = () => {
+        cueMarkerWrap.classList.remove("is-dragging");
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onUp);
 
-          // Re-sort cues by timestamp and re-render
-          track.cues.sort((a, b) => (a.position_secs || 0) - (b.position_secs || 0));
-          renderCueMarkers(track);
-          renderCuePills(track);
-          showToast(`HotCue repositioned to ${formatTime(c.position_secs)}. Click 'Save HotCues' to persist and adapt AI.`, "info", 3500);
-        }
+        // Re-sort cues after drag
+        track.cues.sort((a, b) => (a.position_secs || 0) - (b.position_secs || 0));
+        renderCueMarkers(track);
+        renderCueCards(track);
+        renderStructureSegments(track);
       };
 
-      window.addEventListener("mousemove", onMouseMove);
-      window.addEventListener("mouseup", onMouseUp);
-    };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onUp);
+    });
 
-    marker.addEventListener("mousedown", startDrag);
-    label.addEventListener("mousedown", startDrag);
-
-    cueOverlay.appendChild(marker);
-    cueOverlay.appendChild(label);
+    cueOverlay.appendChild(cueMarkerWrap);
   });
 }
 
-// Setup continuous hold-to-scroll on nudge buttons (-0.1s / +0.1s)
-function setupContinuousNudge(buttonEl, delta, cue, track) {
-  let holdTimeout = null;
-  let repeatInterval = null;
-  let holdStartTime = 0;
-
-  const performStep = () => {
-    const dur = track.duration_secs || 180;
-    const elapsed = Date.now() - holdStartTime;
-    // Progressive acceleration when holding for over 1.2s
-    const stepMultiplier = elapsed > 2000 ? 3.0 : (elapsed > 1000 ? 1.8 : 1.0);
-    const step = delta * stepMultiplier;
-
-    cue.position_secs = Math.min(dur, Math.max(0, parseFloat((cue.position_secs + step).toFixed(3))));
-
-    // Smooth real-time update of marker and time label
-    const pct = (cue.position_secs / dur) * 100;
-    const pillTime = buttonEl.closest('.cue-pill')?.querySelector('.cue-pill-time');
-    if (pillTime) pillTime.textContent = formatTime(cue.position_secs);
-
-    renderCueMarkers(track);
-    seekToPosition(cue.position_secs / dur);
-  };
-
-  const startHold = (e) => {
-    e.stopPropagation();
-    e.preventDefault();
-    holdStartTime = Date.now();
-
-    performStep();
-
-    holdTimeout = setTimeout(() => {
-      repeatInterval = setInterval(() => {
-        performStep();
-      }, 50);
-    }, 220);
-  };
-
-  const stopHold = () => {
-    if (holdTimeout) {
-      clearTimeout(holdTimeout);
-      holdTimeout = null;
-    }
-    if (repeatInterval) {
-      clearInterval(repeatInterval);
-      repeatInterval = null;
-    }
-    track.cues.sort((a, b) => (a.position_secs || 0) - (b.position_secs || 0));
-    renderCueMarkers(track);
-    renderCuePills(track);
-  };
-
-  buttonEl.addEventListener("mousedown", startHold);
-  buttonEl.addEventListener("mouseup", stopHold);
-  buttonEl.addEventListener("mouseleave", stopHold);
-  buttonEl.addEventListener("touchstart", startHold, { passive: false });
-  buttonEl.addEventListener("touchend", stopHold);
-  buttonEl.addEventListener("touchcancel", stopHold);
-}
-
-// Render Interactive HotCue Studio Pills with Quick Controls
-function renderCuePills(track) {
+// Render HotCue Studio Compact Items with Press-and-Hold (Requirement 1)
+function renderCueCards(track) {
   if (!hotcuePillsContainer) return;
   hotcuePillsContainer.innerHTML = "";
 
   if (!track || !track.cues || track.cues.length === 0) {
-    hotcuePillsContainer.innerHTML = `<span class="no-cues-text">No HotCues set for this track. Click "Add Cue at Playhead" or press 'M' to create one.</span>`;
+    hotcuePillsContainer.innerHTML = `<span class="no-cues-text">No HotCues set. Click "Add Cue" or press 'M' at needle.</span>`;
     return;
   }
 
   const duration = track.duration_secs || 180;
   const validCues = track.cues.filter(c => typeof c.position_secs === 'number' && c.position_secs >= 0 && c.position_secs <= duration);
 
-  if (validCues.length === 0) {
-    hotcuePillsContainer.innerHTML = `<span class="no-cues-text">No valid HotCues found. Click "Add Cue at Playhead" or press 'M' to create.</span>`;
-    return;
-  }
-
   validCues.forEach((c, idx) => {
-    const cueTypeClass = (c.cue_type || "cue").toLowerCase();
-    const pill = document.createElement("div");
-    pill.className = `cue-pill`;
-    
-    pill.innerHTML = `
-      <span class="cue-pill-badge cue-${cueTypeClass}">${idx + 1}</span>
-      <select class="cue-type-select" style="background:transparent; border:none; color:var(--text-main); font-size:11px; font-weight:700; cursor:pointer;">
-        ${CUE_TYPES.map(t => `<option value="${t}" ${c.cue_type === t ? 'selected' : ''} style="background:#131823; color:#fff;">${t}</option>`).join('')}
-      </select>
-      <span class="cue-pill-time" title="Click to trigger playback at this HotCue">${formatTime(c.position_secs)}</span>
-      <div class="cue-pill-nudge">
-        <button class="btn-nudge btn-nudge-left" title="Hold to scrub backward continuously">-0.1s</button>
-        <button class="btn-nudge btn-nudge-right" title="Hold to scrub forward continuously">+0.1s</button>
+    const letter = String.fromCharCode(65 + idx);
+    const padNum = (idx % 8) + 1;
+    const cleanType = formatCleanCueType(c.cue_type);
+    const row = document.createElement("div");
+    row.className = "hotcue-pill-row";
+    row.title = `Click to jump to HotCue ${letter} (${formatTime(c.position_secs)})`;
+
+    row.innerHTML = `
+      <div class="hotcue-row-left">
+        <div class="pad-box pad-${padNum}">${letter}</div>
+        <select class="cue-row-select">
+          ${CUE_TYPES.map(t => `<option value="${t}" ${cleanType === t ? 'selected' : ''}>${t}</option>`).join('')}
+        </select>
       </div>
-      <button class="btn-delete-cue" title="Remove HotCue">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
+      <div class="hotcue-row-right">
+        <span class="hotcue-pill-time">${formatTime(c.position_secs)}</span>
+        <div class="hotcue-row-nudges">
+          <button class="btn-pill-nudge btn-nudge-left" title="Click or hold to decrement (-0.1s)">-0.1s</button>
+          <button class="btn-pill-nudge btn-nudge-right" title="Click or hold to increment (+0.1s)">+0.1s</button>
+        </div>
+        <button class="btn-pill-del" title="Delete Cue">✕</button>
+      </div>
     `;
 
-    // Jump to cue position on clicking time or badge (maintains current play/pause state)
-    const onCueJump = (e) => {
+    // Click row to jump
+    row.addEventListener("click", () => {
+      seekToPosition(c.position_secs / duration);
+      document.querySelectorAll(".hotcue-pill-row").forEach(r => r.classList.remove("active"));
+      row.classList.add("active");
+    });
+
+    const selectEl = row.querySelector(".cue-row-select");
+    selectEl.addEventListener("click", (e) => e.stopPropagation());
+    selectEl.addEventListener("change", (e) => {
       e.stopPropagation();
-      const dur = track.duration_secs || 180;
-      seekToPosition(c.position_secs / dur);
-    };
-
-    pill.querySelector(".cue-pill-badge").addEventListener("click", onCueJump);
-    pill.querySelector(".cue-pill-time").addEventListener("click", onCueJump);
-
-    // Change cue type
-    pill.querySelector(".cue-type-select").addEventListener("change", (e) => {
       c.cue_type = e.target.value;
       renderCueMarkers(track);
-      renderCuePills(track);
+      renderStructureSegments(track);
     });
 
-    // Continuous Hold Nudge Left (-0.1s)
-    const btnLeft = pill.querySelector(".btn-nudge-left");
-    setupContinuousNudge(btnLeft, -0.1, c, track);
+    // Press and Hold continuous fine adjustment (Requirement 1)
+    const btnNudgeLeft = row.querySelector(".btn-pill-nudge.btn-nudge-left");
+    const btnNudgeRight = row.querySelector(".btn-pill-nudge.btn-nudge-right");
+    const timeSpan = row.querySelector(".hotcue-pill-time");
 
-    // Continuous Hold Nudge Right (+0.1s)
-    const btnRight = pill.querySelector(".btn-nudge-right");
-    setupContinuousNudge(btnRight, +0.1, c, track);
-
-    // Delete cue
-    pill.querySelector(".btn-delete-cue").addEventListener("click", (e) => {
-      e.stopPropagation();
-      const realIndex = track.cues.indexOf(c);
-      if (realIndex !== -1) {
-        track.cues.splice(realIndex, 1);
-      }
+    attachPressAndHold(btnNudgeLeft, () => {
+      c.position_secs = Math.max(0, parseFloat((c.position_secs - 0.1).toFixed(3)));
+      timeSpan.textContent = formatTime(c.position_secs);
       renderCueMarkers(track);
-      renderCuePills(track);
-      showToast(`HotCue removed. Click 'Save & Train AI' to persist changes.`, "info", 2500);
+      renderStructureSegments(track);
     });
 
-    hotcuePillsContainer.appendChild(pill);
+    attachPressAndHold(btnNudgeRight, () => {
+      c.position_secs = Math.min(duration, parseFloat((c.position_secs + 0.1).toFixed(3)));
+      timeSpan.textContent = formatTime(c.position_secs);
+      renderCueMarkers(track);
+      renderStructureSegments(track);
+    });
+
+    // Direct Time Editing on double click
+    timeSpan.addEventListener("dblclick", (e) => {
+      e.stopPropagation();
+      editHotCueRow(row, c, track);
+    });
+
+    row.querySelector(".btn-pill-del").addEventListener("click", (e) => {
+      e.stopPropagation();
+      const realIdx = track.cues.indexOf(c);
+      if (realIdx !== -1) track.cues.splice(realIdx, 1);
+      renderCueMarkers(track);
+      renderCueCards(track);
+      renderStructureSegments(track);
+    });
+
+    hotcuePillsContainer.appendChild(row);
   });
 }
 
-// Helper to accurately resolve the current needle/playhead position in seconds
+function editHotCueRow(row, cue, track) {
+  if (!row || !cue || !track) return;
+  const timeSpan = row.querySelector(".hotcue-pill-time");
+  const selectEl = row.querySelector(".cue-row-select");
+  if (!timeSpan || !selectEl) return;
+
+  selectEl.focus();
+
+  if (row.querySelector(".input-cue-time-edit")) return;
+
+  const duration = track.duration_secs || 180;
+  const currentFormatted = formatTime(cue.position_secs);
+
+  const inputEl = document.createElement("input");
+  inputEl.className = "input-cue-time-edit";
+  inputEl.type = "text";
+  inputEl.value = currentFormatted;
+
+  timeSpan.style.display = "none";
+  timeSpan.parentNode.insertBefore(inputEl, timeSpan);
+  inputEl.focus();
+  inputEl.select();
+
+  const commitTime = () => {
+    const val = inputEl.value.trim();
+    let parsedSec = cue.position_secs;
+    if (val.includes(":")) {
+      const parts = val.split(":");
+      const mins = parseFloat(parts[0]) || 0;
+      const secs = parseFloat(parts[1]) || 0;
+      parsedSec = (mins * 60) + secs;
+    } else {
+      parsedSec = parseFloat(val) || cue.position_secs;
+    }
+
+    if (!isNaN(parsedSec)) {
+      cue.position_secs = Math.max(0, Math.min(duration, parseFloat(parsedSec.toFixed(3))));
+    }
+
+    timeSpan.textContent = formatTime(cue.position_secs);
+    inputEl.remove();
+    timeSpan.style.display = "";
+
+    track.cues.sort((a, b) => (a.position_secs || 0) - (b.position_secs || 0));
+    renderCueMarkers(track);
+    renderStructureSegments(track);
+    seekToPosition(cue.position_secs / duration);
+  };
+
+  inputEl.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      commitTime();
+    } else if (e.key === "Escape") {
+      inputEl.remove();
+      timeSpan.style.display = "";
+    }
+  });
+
+  inputEl.addEventListener("blur", commitTime);
+}
+
 function getCurrentPlayheadSec() {
   if (!selectedTrack) return 0;
   const duration = selectedTrack.duration_secs || 180;
-
-  // 1. If currently playing real audio and time is moving:
   if (currentAudio && !currentAudio.paused && !isNaN(currentAudio.currentTime) && currentAudio.currentTime > 0) {
     return currentAudio.currentTime;
   }
-
-  // 2. If user seeked or clicked anywhere on the waveform:
-  if (pendingSeekSec !== null && !isNaN(pendingSeekSec) && pendingSeekSec > 0) {
-    return pendingSeekSec;
-  }
-
-  // 3. If simulated playback is actively running or was positioned:
-  if (simulatedCurTime > 0 && !isNaN(simulatedCurTime)) {
-    return simulatedCurTime;
-  }
-
-  // 4. If currentAudio exists and has a non-zero timestamp:
-  if (currentAudio && !isNaN(currentAudio.currentTime) && currentAudio.currentTime > 0) {
-    return currentAudio.currentTime;
-  }
-
-  // 5. Read visual playhead element position (% of container width):
-  if (playhead && playhead.style.left && playhead.style.left !== "0%") {
-    const pct = parseFloat(playhead.style.left) / 100.0;
-    if (!isNaN(pct) && pct > 0) {
-      return pct * duration;
-    }
-  }
-
+  if (pendingSeekSec !== null && !isNaN(pendingSeekSec)) return pendingSeekSec;
+  if (simulatedCurTime > 0) return simulatedCurTime;
   return 0;
 }
 
-// Add HotCue at current Playhead position
 function addCueAtPlayhead() {
   if (!selectedTrack) {
     showToast("Select a track first to add HotCues.", "error");
@@ -950,39 +1329,18 @@ function addCueAtPlayhead() {
   const duration = selectedTrack.duration_secs || 180;
   let curSec = getCurrentPlayheadSec();
 
-  // If snapToGrid is active, quantize to nearest beat on the beatgrid
   if (snapToGrid) {
     curSec = snapTimestampToBeat(curSec, selectedTrack);
   }
-
   curSec = Math.max(0, Math.min(duration, parseFloat(curSec.toFixed(3))));
 
   if (!selectedTrack.cues) selectedTrack.cues = [];
 
-  // Suggest intelligent cue label based on position & existing cues
-  const numExistingDrops = selectedTrack.cues.filter(c => (c.cue_type || "").includes("DROP")).length;
-  const numExistingBreaks = selectedTrack.cues.filter(c => (c.cue_type || "").includes("BREAK")).length;
-
-  let suggestedType = "DROP_1";
-  if (selectedTrack.cues.length === 0 || curSec < 5.0) {
-    suggestedType = "FIRST_BEAT";
-  } else if (numExistingDrops === 1) {
-    suggestedType = "BREAK_1";
-  } else if (numExistingDrops > 1 && numExistingBreaks > 0) {
-    suggestedType = `DROP_${numExistingDrops + 1}`;
-  } else if (numExistingDrops > 0) {
-    suggestedType = `DROP_${numExistingDrops + 1}`;
-  }
-
-  // Check if a cue already exists very close to this position (< 0.15s)
   const existingNear = selectedTrack.cues.find(c => Math.abs(c.position_secs - curSec) < 0.15);
-  if (existingNear) {
-    showToast(`A HotCue (${existingNear.cue_type}) already exists at ${formatTime(curSec)}.`, "info", 2500);
-    return;
-  }
+  if (existingNear) return;
 
   selectedTrack.cues.push({
-    cue_type: suggestedType,
+    cue_type: selectedTrack.cues.length === 0 ? "INTRO" : "DROP",
     position_secs: curSec,
     hotcue_num: selectedTrack.cues.length + 1
   });
@@ -990,22 +1348,23 @@ function addCueAtPlayhead() {
   selectedTrack.cues.sort((a, b) => (a.position_secs || 0) - (b.position_secs || 0));
 
   renderCueMarkers(selectedTrack);
-  renderCuePills(selectedTrack);
-
-  showToast(`New HotCue ${suggestedType} added at ${formatTime(curSec)}.`, "info", 3000);
+  renderCueCards(selectedTrack);
+  renderStructureSegments(selectedTrack);
 }
 
-// Save Cues & Persist Grid Markers
+// Single Save & Teach AI Function: Saves cues & adapts neural models (Requirement 2)
 async function saveAndTeachAI() {
   if (!selectedTrack) {
     showToast("Select a track to save changes.", "error");
     return;
   }
 
-  const btn = document.getElementById("btn-save-teach-ai");
-  const origHtml = btn.innerHTML;
-  btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg> <span>Saving...</span>`;
-  btn.disabled = true;
+  const btn = btnSaveTeachAi;
+  const origText = btn ? btn.textContent : "Save & Teach AI";
+  if (btn) {
+    btn.textContent = "Training...";
+    btn.disabled = true;
+  }
 
   try {
     const res = await fetch(`${API_BASE}/api/save_user_cues`, {
@@ -1014,22 +1373,19 @@ async function saveAndTeachAI() {
       body: JSON.stringify({
         track_id: selectedTrack.id,
         cues: selectedTrack.cues || [],
-        bpm: selectedTrack.bpm || 120.0
+        bpm: selectedTrack.bpm || 120.0,
+        teach_ai: true
       })
     });
 
     const data = await res.json();
     if (data.status === "ok") {
-      showToast("Beatgrid, HotCues and AI model calibrated successfully!", "success", 4000);
+      showToast("HotCues saved and AI model calibrated successfully!", "success", 3000);
       if (data.cues) {
         selectedTrack.cues = data.cues;
         renderCueMarkers(selectedTrack);
-        renderCuePills(selectedTrack);
-      }
-      if (data.bpm) {
-        selectedTrack.bpm = parseFloat(data.bpm);
-        if (inputBpm) inputBpm.value = selectedTrack.bpm.toFixed(2);
-        drawRGBWaveform(selectedTrack);
+        renderCueCards(selectedTrack);
+        renderStructureSegments(selectedTrack);
       }
     } else {
       showToast(`Save error: ${data.error || 'Unknown'}`, "error");
@@ -1037,16 +1393,15 @@ async function saveAndTeachAI() {
   } catch (err) {
     showToast(`Backend connection error: ${err.message}`, "error");
   } finally {
-    btn.innerHTML = origHtml;
-    btn.disabled = false;
+    if (btn) {
+      btn.textContent = origText;
+      btn.disabled = false;
+    }
   }
 }
 
-let isSeeking = false;
-let seekingTimeout = null;
-
-// Audio Seeking Helper (with Snap-to-Grid support)
-function seekToPosition(pct) {
+// Audio Seeking & Continuous Dragging Playback
+function seekToPosition(pct, updateAudio = true) {
   if (!selectedTrack) return;
   const duration = selectedTrack.duration_secs || 180;
   let targetSec = pct * duration;
@@ -1056,26 +1411,28 @@ function seekToPosition(pct) {
     pct = Math.max(0, Math.min(1, targetSec / duration));
   }
 
-  isSeeking = true;
-  if (seekingTimeout) clearTimeout(seekingTimeout);
-  seekingTimeout = setTimeout(() => { isSeeking = false; }, 400);
-
   pendingSeekSec = targetSec;
   simulatedCurTime = targetSec;
 
   playhead.style.left = `${pct * 100}%`;
-  timeDisplay.textContent = `${formatTime(targetSec)} / ${formatTime(duration)}`;
+  if (miniOverviewProgress) miniOverviewProgress.style.width = `${pct * 100}%`;
+  if (miniOverviewHandle) miniOverviewHandle.style.left = `${pct * 100}%`;
+  if (playerScrubberProgress) playerScrubberProgress.style.width = `${pct * 100}%`;
+  if (playerScrubberHandle) playerScrubberHandle.style.left = `${pct * 100}%`;
 
-  if (currentAudio) {
-    try {
-      currentAudio.currentTime = targetSec;
-    } catch (e) {
-      console.log("Deferred seek until metadata loads...");
-    }
+  const curFormatted = formatTime(targetSec);
+  const remFormatted = `-${formatTime(Math.max(0, duration - targetSec))}`;
+
+  if (timeDisplay) timeDisplay.textContent = curFormatted;
+  if (timeRemainingDisplay) timeRemainingDisplay.textContent = remFormatted;
+  if (playerTimeCur) playerTimeCur.textContent = curFormatted;
+  if (playerTimeRem) playerTimeRem.textContent = remFormatted;
+
+  if (updateAudio && currentAudio) {
+    try { currentAudio.currentTime = targetSec; } catch (e) {}
   }
 }
 
-// Ultra-Smooth 60 FPS RequestAnimationFrame Playhead Animation Engine
 let playheadAnimFrame = null;
 let lastSimulatedTime = 0;
 
@@ -1086,43 +1443,52 @@ function startPlayheadAnimation() {
   function animate(now) {
     if (!isPlaying) return;
 
-    if (currentAudio && !currentAudio.paused && !isSeeking) {
-      const curTime = currentAudio.currentTime;
-      const duration = currentAudio.duration || (selectedTrack ? selectedTrack.duration_secs : 180) || 180;
-      if (duration > 0 && !isNaN(curTime)) {
-        const pct = Math.min(100, Math.max(0, (curTime / duration) * 100));
-        playhead.style.left = `${pct}%`;
-        timeDisplay.textContent = `${formatTime(curTime)} / ${formatTime(duration)}`;
+    const duration = (selectedTrack ? selectedTrack.duration_secs : 180) || 180;
+    let curTime = 0;
 
-        // Smooth continuous auto-scroll when zoomed in
-        if (zoomLevel > 1.0 && waveformCanvasContainer && waveformCanvas) {
-          const totalWidth = waveformCanvas.width;
-          const playheadPx = (pct / 100) * totalWidth;
-          const halfView = waveformCanvasContainer.clientWidth / 2;
-          waveformCanvasContainer.scrollLeft = playheadPx - halfView;
+    if (currentAudio && !currentAudio.paused && !isNaN(currentAudio.currentTime)) {
+      curTime = currentAudio.currentTime;
+    } else {
+      const dt = (now - lastSimulatedTime) / 1000.0;
+      simulatedCurTime += dt;
+      if (simulatedCurTime >= duration) {
+        if (isLooping) {
+          simulatedCurTime = 0;
+        } else {
+          simulatedCurTime = 0;
+          isPlaying = false;
+          updatePlayButtonIcons(false);
+          playhead.style.left = "0%";
+          if (miniOverviewProgress) miniOverviewProgress.style.width = "0%";
+          if (playerScrubberProgress) playerScrubberProgress.style.width = "0%";
+          return;
         }
       }
-    } else if (!isSeeking && isPlaying) {
-      const dt = (now - lastSimulatedTime) / 1000.0;
-      const dur = (selectedTrack ? selectedTrack.duration_secs : 180) || 180;
-      simulatedCurTime += dt;
-      if (simulatedCurTime >= dur) {
-        simulatedCurTime = 0;
-        isPlaying = false;
-        btnPlay.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>`;
-        playhead.style.left = "0%";
-        timeDisplay.textContent = `00:00 / ${formatTime(dur)}`;
-        return;
-      }
-      const pct = Math.min(100, Math.max(0, (simulatedCurTime / dur) * 100));
-      playhead.style.left = `${pct}%`;
-      timeDisplay.textContent = `${formatTime(simulatedCurTime)} / ${formatTime(dur)}`;
+      curTime = simulatedCurTime;
+    }
 
+    if (!isDraggingScrubber) {
+      const pct = Math.min(100, Math.max(0, (curTime / duration) * 100));
+      playhead.style.left = `${pct}%`;
+      if (miniOverviewProgress) miniOverviewProgress.style.width = `${pct}%`;
+      if (miniOverviewHandle) miniOverviewHandle.style.left = `${pct}%`;
+      if (playerScrubberProgress) playerScrubberProgress.style.width = `${pct}%`;
+      if (playerScrubberHandle) playerScrubberHandle.style.left = `${pct}%`;
+
+      const curFormatted = formatTime(curTime);
+      const remFormatted = `-${formatTime(Math.max(0, duration - curTime))}`;
+
+      if (timeDisplay) timeDisplay.textContent = curFormatted;
+      if (timeRemainingDisplay) timeRemainingDisplay.textContent = remFormatted;
+      if (playerTimeCur) playerTimeCur.textContent = curFormatted;
+      if (playerTimeRem) playerTimeRem.textContent = remFormatted;
+
+      // Smooth auto-scroll when zoomed in
       if (zoomLevel > 1.0 && waveformCanvasContainer && waveformCanvas) {
+        const containerWidth = waveformCanvasContainer.clientWidth;
         const totalWidth = waveformCanvas.width;
         const playheadPx = (pct / 100) * totalWidth;
-        const halfView = waveformCanvasContainer.clientWidth / 2;
-        waveformCanvasContainer.scrollLeft = playheadPx - halfView;
+        waveformCanvasContainer.scrollLeft = playheadPx - (containerWidth / 2);
       }
     }
 
@@ -1142,55 +1508,34 @@ function stopPlayheadAnimation() {
   }
 }
 
-// Audio Playback
 function togglePlay() {
-  if (!selectedTrack) return;
+  if (!selectedTrack) {
+    if (tracksData.length > 0) selectTrack(tracksData[0]);
+    else return;
+  }
 
   if (!currentAudio) {
     currentAudio = new Audio(`${API_BASE}/audio/?id=${selectedTrack.id}`);
-    currentAudio.addEventListener("ended", () => {
-      isPlaying = false;
-      stopPlayheadAnimation();
-      btnPlay.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>`;
-      playhead.style.left = "0%";
-      pendingSeekSec = null;
-      simulatedCurTime = 0;
-    });
-
-    currentAudio.addEventListener("loadedmetadata", () => {
-      if (pendingSeekSec !== null && currentAudio) {
-        try {
-          currentAudio.currentTime = pendingSeekSec;
-        } catch (e) {}
-      }
-    });
+    currentAudio.volume = playerVolumeSlider ? parseFloat(playerVolumeSlider.value) : 0.9;
   }
 
   if (isPlaying) {
     if (currentAudio) currentAudio.pause();
     isPlaying = false;
     stopPlayheadAnimation();
-    btnPlay.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>`;
+    updatePlayButtonIcons(false);
   } else {
     if (pendingSeekSec !== null) {
-      try {
-        currentAudio.currentTime = pendingSeekSec;
-      } catch (e) {}
+      try { currentAudio.currentTime = pendingSeekSec; } catch (e) {}
     }
 
     currentAudio.play().then(() => {
       isPlaying = true;
-      btnPlay.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`;
+      updatePlayButtonIcons(true);
       startPlayheadAnimation();
-      if (pendingSeekSec !== null) {
-        try {
-          currentAudio.currentTime = pendingSeekSec;
-        } catch (e) {}
-      }
-    }).catch(err => {
-      console.log("Audio playback notice, using smooth client simulation:", err);
+    }).catch(() => {
       isPlaying = true;
-      btnPlay.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`;
+      updatePlayButtonIcons(true);
       if (pendingSeekSec !== null) {
         simulatedCurTime = pendingSeekSec;
         pendingSeekSec = null;
@@ -1200,41 +1545,152 @@ function togglePlay() {
   }
 }
 
-function updatePlayhead() {
-  // Maintained for seek event sync
-  if (!isPlaying || !currentAudio || isSeeking) return;
-  const duration = currentAudio.duration || (selectedTrack ? selectedTrack.duration_secs : 180) || 180;
-  if (isNaN(currentAudio.currentTime) || duration <= 0) return;
-  const pct = Math.min(100, Math.max(0, (currentAudio.currentTime / duration) * 100));
-  playhead.style.left = `${pct}%`;
-  timeDisplay.textContent = `${formatTime(currentAudio.currentTime)} / ${formatTime(duration)}`;
+// Delete Track Modal
+function openDeleteModal(id, title) {
+  pendingDeleteTrack = { id, title };
+  if (deleteTrackTitleText) deleteTrackTitleText.textContent = `"${title}"`;
+  if (modalDeleteConfirm) modalDeleteConfirm.classList.remove("hidden");
 }
 
-function formatTime(secs) {
-  const m = Math.floor(secs / 60);
-  const s = Math.floor(secs % 60);
-  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+if (btnCloseDeleteModal) btnCloseDeleteModal.addEventListener("click", () => modalDeleteConfirm.classList.add("hidden"));
+if (btnCancelDelete) btnCancelDelete.addEventListener("click", () => modalDeleteConfirm.classList.add("hidden"));
+if (btnConfirmDelete) {
+  btnConfirmDelete.addEventListener("click", async () => {
+    if (!pendingDeleteTrack) return;
+    const { id, title } = pendingDeleteTrack;
+    modalDeleteConfirm.classList.add("hidden");
+    try {
+      const res = await fetch(`${API_BASE}/api/delete_track`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ track_id: id })
+      });
+      const data = await res.json();
+      if (data.status === "ok") {
+        if (selectedTrack && selectedTrack.id === id) selectedTrack = null;
+        loadTracks();
+      }
+    } catch (err) {
+      showToast(`Error deleting track: ${err.message}`, "error");
+    }
+  });
 }
 
-// Single File Analysis API Trigger
-async function triggerSingleAnalysis(filePath, fileName = null, fileBlob = null) {
-  importAnalysisCard.classList.remove("hidden");
-  importStatusTitle.textContent = `Analyzing ${fileName || filePath}...`;
-  importStatusStep.textContent = "Decoding PCM Audio & Resampling to 22,050 Hz...";
+// Sidebar Collapse Toggle
+if (btnCollapseSidebar) {
+  btnCollapseSidebar.addEventListener("click", () => {
+    if (sidebarNav) {
+      sidebarNav.classList.toggle("collapsed");
+      const isCol = sidebarNav.classList.contains("collapsed");
+      localStorage.setItem("ah_sidebar_collapsed", isCol ? "1" : "0");
+      requestAnimationFrame(() => {
+        if (selectedTrack) {
+          drawRGBWaveform(selectedTrack);
+          renderCueMarkers(selectedTrack);
+        }
+      });
+    }
+  });
+}
+
+// Single Import & Batch Analysis
+if (btnImport) {
+  btnImport.addEventListener("click", async () => {
+    modalImport.classList.remove("hidden");
+    if (importAnalysisCard) importAnalysisCard.classList.add("hidden");
+    loadDiscoveredFiles();
+  });
+}
+if (btnCloseImportModal) btnCloseImportModal.addEventListener("click", () => modalImport.classList.add("hidden"));
+if (btnCloseImportFooter) btnCloseImportFooter.addEventListener("click", () => modalImport.classList.add("hidden"));
+
+if (dropzone) {
+  dropzone.addEventListener("click", () => {
+    if (filePicker) filePicker.click();
+  });
+
+  dropzone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    dropzone.style.borderColor = "#3b82f6";
+    dropzone.style.background = "rgba(59, 130, 246, 0.1)";
+  });
+  dropzone.addEventListener("dragleave", () => {
+    dropzone.style.borderColor = "rgba(255, 255, 255, 0.15)";
+    dropzone.style.background = "rgba(0, 0, 0, 0.2)";
+  });
+  dropzone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dropzone.style.borderColor = "rgba(255, 255, 255, 0.15)";
+    dropzone.style.background = "rgba(0, 0, 0, 0.2)";
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      triggerSingleAnalysis(e.dataTransfer.files[0].name, e.dataTransfer.files[0]);
+    }
+  });
+}
+
+if (filePicker) {
+  filePicker.addEventListener("change", (e) => {
+    if (e.target.files.length > 0) triggerSingleAnalysis(e.target.files[0].name, e.target.files[0]);
+  });
+}
+if (btnRunSingleImport) {
+  btnRunSingleImport.addEventListener("click", () => {
+    const val = importPathInput.value.trim();
+    if (val) triggerSingleAnalysis(val);
+  });
+}
+
+async function loadDiscoveredFiles() {
+  if (!discoveredFilesList) return;
+  discoveredFilesList.innerHTML = `<span style="font-size:11px; color:#64748b;">Scanning workspace...</span>`;
+
+  try {
+    const res = await fetch(`${API_BASE}/api/scan_files`);
+    const data = await res.json();
+    const files = data.files || [];
+
+    if (files.length === 0) {
+      discoveredFilesList.innerHTML = `<span style="font-size:11px; color:#64748b;">No new unanalyzed audio files found in workspace.</span>`;
+      return;
+    }
+
+    discoveredFilesList.innerHTML = "";
+    files.slice(0, 8).forEach(f => {
+      const chip = document.createElement("div");
+      chip.className = "discovered-file-chip";
+      const name = f.split(/[\/\\]/).pop();
+      chip.innerHTML = `
+        <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:380px;">${escapeHtml(name)}</span>
+        <button class="btn-chip-analyze">Analyze</button>
+      `;
+      chip.querySelector("button").addEventListener("click", () => {
+        triggerSingleAnalysis(f);
+      });
+      discoveredFilesList.appendChild(chip);
+    });
+  } catch (e) {
+    discoveredFilesList.innerHTML = `<span style="font-size:11px; color:#ef4444;">Could not scan workspace files.</span>`;
+  }
+}
+
+async function triggerSingleAnalysis(filePath, fileBlob = null) {
+  if (importAnalysisCard) {
+    importAnalysisCard.classList.remove("hidden");
+    if (importStatusTitle) importStatusTitle.textContent = "Analyzing audio file...";
+    if (importStatusStep) importStatusStep.textContent = "Extracting ID3 tags, artwork & AI neural features...";
+  }
 
   try {
     let res;
     if (fileBlob) {
       const base64Data = await fileToBase64(fileBlob);
-      importStatusStep.textContent = "Running CQT Transform & Neural Key Detector...";
       const response = await fetch(`${API_BASE}/api/upload_and_analyze`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ file_name: fileName, base64_data: base64Data })
+        body: JSON.stringify({ file_name: filePath, base64_data: base64Data })
       });
       res = await response.json();
     } else {
-      importStatusStep.textContent = "Running CQT Transform & Neural Key Detector...";
       const response = await fetch(`${API_BASE}/api/analyze_file`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1243,20 +1699,32 @@ async function triggerSingleAnalysis(filePath, fileName = null, fileBlob = null)
       res = await response.json();
     }
 
-    importAnalysisCard.classList.add("hidden");
-
     if (res.status === "ok") {
-      showToast(`Successfully analyzed '${res.result.file_name}'! Key: ${res.result.camelot_key} (${res.result.detected_key}) | BPM: ${res.result.bpm.toFixed(1)}`, "success", 5000);
-      modalImport.classList.add("hidden");
-      await loadTracks();
-      const newTrack = tracksData.find(t => t.id === res.result.track_id);
-      if (newTrack) selectTrack(newTrack);
+      if (importStatusTitle) importStatusTitle.textContent = "Analysis complete!";
+      if (importStatusStep) importStatusStep.textContent = `Key: ${res.result.camelot_key} | BPM: ${Math.round(res.result.bpm)} | Artist: ${res.result.artist || 'Unknown'}`;
+      
+      setTimeout(async () => {
+        if (importAnalysisCard) importAnalysisCard.classList.add("hidden");
+        modalImport.classList.add("hidden");
+        await loadTracks();
+        const newTrack = tracksData.find(t => t.id === res.result.track_id);
+        if (newTrack) selectTrack(newTrack);
+      }, 700);
     } else {
-      showToast(`Analysis Error: ${res.error || 'Failed processing audio'}`, "error", 5000);
+      if (importStatusTitle) importStatusTitle.textContent = "Analysis failed";
+      if (importStatusStep) importStatusStep.textContent = res.error || "Unknown error";
+      showToast(`Error: ${res.error}`, "error");
+      setTimeout(() => {
+        if (importAnalysisCard) importAnalysisCard.classList.add("hidden");
+      }, 3000);
     }
   } catch (err) {
-    importAnalysisCard.classList.add("hidden");
-    showToast(`Error analyzing file: ${err.message}`, "error", 5000);
+    if (importStatusTitle) importStatusTitle.textContent = "Analysis failed";
+    if (importStatusStep) importStatusStep.textContent = err.message;
+    showToast(`Error: ${err.message}`, "error");
+    setTimeout(() => {
+      if (importAnalysisCard) importAnalysisCard.classList.add("hidden");
+    }, 3000);
   }
 }
 
@@ -1269,150 +1737,60 @@ function fileToBase64(file) {
   });
 }
 
-// Scan & Render Discovered Local Files
-async function scanDiscoveredFiles() {
-  try {
-    const res = await fetch(`${API_BASE}/api/scan_files`);
-    const data = await res.json();
-    if (data.status === "ok" && data.files) {
-      discoveredFilesList.innerHTML = "";
-      if (data.files.length === 0) {
-        discoveredFilesList.innerHTML = `<div style="font-size:11px; color:#8a96ab; padding:4px;">No unanalyzed tracks found in workspace.</div>`;
-        return;
-      }
-
-      data.files.forEach(fp => {
-        const fname = fp.split(/[\\/]/).pop();
-        const chip = document.createElement("div");
-        chip.className = "file-item-chip";
-        chip.innerHTML = `
-          <span style="display:inline-flex; align-items:center; gap:6px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--cyan-glow)" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg> <strong>${fname}</strong> <span style="font-size:10px; color:#8a96ab;">(${fp})</span></span>
-          <button class="btn btn-secondary" style="padding:2px 8px; font-size:10px;">Analyze</button>
-        `;
-        chip.querySelector("button").addEventListener("click", (e) => {
-          e.stopPropagation();
-          triggerSingleAnalysis(fp, fname);
-        });
-        discoveredFilesList.appendChild(chip);
-      });
+// Batch Analysis with Real Interactive Feedback
+if (btnBatch) {
+  btnBatch.addEventListener("click", () => {
+    modalBatch.classList.remove("hidden");
+    if (batchResultsSummary) batchResultsSummary.classList.add("hidden");
+    if (btnStartBatch) {
+      btnStartBatch.textContent = "Start Batch Analysis";
+      btnStartBatch.disabled = false;
     }
-  } catch (err) {
-    console.error("Scan files error:", err);
-  }
+  });
 }
+if (btnCloseBatchModal) btnCloseBatchModal.addEventListener("click", () => modalBatch.classList.add("hidden"));
 
-// Camelot Modal Events
-btnToggleCamelotWheel.addEventListener("click", () => {
-  renderCamelotGrid();
-  modalCamelotPicker.classList.remove("hidden");
-});
-
-btnCloseCamelotModal.addEventListener("click", () => {
-  modalCamelotPicker.classList.add("hidden");
-});
-
-btnClearCamelotFilter.addEventListener("click", () => {
-  filterCamelot.value = "";
-  modalCamelotPicker.classList.add("hidden");
-  loadTracks();
-  showToast("Cleared Camelot key filter.", "info");
-});
-
-// Import Modal Handlers
-btnImport.addEventListener("click", () => {
-  modalImport.classList.remove("hidden");
-  scanDiscoveredFiles();
-});
-
-btnCloseImportModal.addEventListener("click", () => {
-  modalImport.classList.add("hidden");
-  importAnalysisCard.classList.add("hidden");
-});
-
-dropzone.addEventListener("click", () => filePicker.click());
-
-dropzone.addEventListener("dragover", (e) => {
-  e.preventDefault();
-  dropzone.classList.add("dragover");
-});
-
-dropzone.addEventListener("dragleave", () => dropzone.classList.remove("dragover"));
-
-dropzone.addEventListener("drop", (e) => {
-  e.preventDefault();
-  dropzone.classList.remove("dragover");
-  if (e.dataTransfer.files.length > 0) {
-    const file = e.dataTransfer.files[0];
-    triggerSingleAnalysis(file.name, file.name, file);
-  }
-});
-
-filePicker.addEventListener("change", (e) => {
-  if (e.target.files.length > 0) {
-    const file = e.target.files[0];
-    triggerSingleAnalysis(file.name, file.name, file);
-  }
-});
-
-btnRunSingleImport.addEventListener("click", () => {
-  const pathVal = importPathInput.value.trim();
-  if (pathVal) {
-    triggerSingleAnalysis(pathVal, pathVal);
-  } else {
-    showToast("Please enter a valid file path or select a file.", "error");
-  }
-});
-
-// Batch Analysis Modal Handlers
-btnBatch.addEventListener("click", () => {
-  modalBatch.classList.remove("hidden");
-  batchModalFile.textContent = "Ready to start batch analysis...";
-  batchModalPct.textContent = "0%";
-  batchModalProgressBar.style.width = "0%";
-  batchModalCount.textContent = "0 / 0 tracks";
-  batchModalSpeed.textContent = "0.0 tracks/sec";
-  batchModalEta.textContent = "ETA: --s";
-});
-
-btnCloseBatchModal.addEventListener("click", () => {
-  modalBatch.classList.add("hidden");
-  if (batchPollInterval) clearInterval(batchPollInterval);
-});
-
-btnStartBatch.addEventListener("click", async () => {
-  try {
-    const scanRes = await fetch(`${API_BASE}/api/scan_files`);
-    const scanData = await scanRes.json();
-    const filesToAnalyze = scanData.files || [];
-
-    if (filesToAnalyze.length === 0) {
-      showToast("No audio files found on disk to batch analyze.", "error");
+if (btnStartBatch) {
+  btnStartBatch.addEventListener("click", async () => {
+    if (btnStartBatch.textContent === "Done") {
+      modalBatch.classList.add("hidden");
       return;
     }
 
-    const res = await fetch(`${API_BASE}/api/analyze_batch`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ file_paths: filesToAnalyze })
-    });
-    const data = await res.json();
+    try {
+      const scanRes = await fetch(`${API_BASE}/api/scan_files`);
+      const scanData = await scanRes.json();
+      const files = scanData.files || [];
+      if (files.length === 0) {
+        showToast("No audio files found on disk.", "error");
+        return;
+      }
 
-    if (data.status === "ok") {
-      showToast(`Started Multi-Threaded Batch Analysis for ${data.total} tracks!`, "info");
+      btnStartBatch.textContent = "Analyzing...";
       btnStartBatch.disabled = true;
-      btnStartBatch.textContent = "Analyzing Batch...";
-      startBatchPolling();
-    } else {
-      showToast(`Batch Error: ${data.error}`, "error");
+      if (batchModalDesc) batchModalDesc.textContent = `Batch processing ${files.length} audio tracks in background...`;
+      if (batchResultsSummary) batchResultsSummary.classList.add("hidden");
+
+      const res = await fetch(`${API_BASE}/api/analyze_batch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ file_paths: files })
+      });
+      const data = await res.json();
+      if (data.status === "ok") {
+        startBatchPolling();
+      }
+    } catch (err) {
+      showToast(`Batch Error: ${err.message}`, "error");
+      btnStartBatch.textContent = "Start Batch Analysis";
+      btnStartBatch.disabled = false;
     }
-  } catch (err) {
-    showToast(`Error initiating batch: ${err.message}`, "error");
-  }
-});
+  });
+}
 
 function startBatchPolling() {
   if (batchPollInterval) clearInterval(batchPollInterval);
-  batchProgressContainer.classList.remove("hidden");
+  if (batchProgressContainer) batchProgressContainer.classList.remove("hidden");
 
   batchPollInterval = setInterval(async () => {
     try {
@@ -1424,109 +1802,399 @@ function startBatchPolling() {
         const done = b.processed_files || 0;
         const pct = Math.round((done / total) * 100);
 
-        batchModalFile.textContent = b.current_file ? `Analyzing: ${b.current_file}` : 'In progress...';
-        batchModalPct.textContent = `${pct}%`;
-        batchModalProgressBar.style.width = `${pct}%`;
-        batchModalCount.textContent = `${done} / ${total} tracks`;
-        batchModalSpeed.textContent = `${b.tracks_per_sec || 0} tracks/sec`;
-        batchModalEta.textContent = `ETA: ${b.eta_seconds || 0}s`;
+        // Update Modal Progress
+        if (batchModalProgressBar) batchModalProgressBar.style.width = `${pct}%`;
+        if (batchModalPct) batchModalPct.textContent = `${pct}%`;
+        if (batchModalFile) batchModalFile.textContent = b.current_file ? `Analyzing: ${b.current_file}` : "Processing...";
+        if (batchModalCount) batchModalCount.textContent = `${done} of ${total} tracks`;
+        if (batchModalSpeed) batchModalSpeed.textContent = `${b.tracks_per_sec || 0} tracks/sec`;
+        if (batchModalEta) batchModalEta.textContent = `ETA: ${b.eta_seconds || 0}s`;
 
-        batchProgressInner.style.width = `${pct}%`;
-        batchSpeed.textContent = `${b.tracks_per_sec || 0} tracks/sec`;
-        batchCount.textContent = `${done} / ${total}`;
+        // Update Sub-strip
+        if (batchProgressInner) batchProgressInner.style.width = `${pct}%`;
+        if (batchSpeed) batchSpeed.textContent = `${b.tracks_per_sec || 0} tracks/sec`;
+        if (batchCount) batchCount.textContent = `${done} / ${total}`;
 
         if (!b.is_running && done >= total && total > 0) {
           clearInterval(batchPollInterval);
-          btnStartBatch.disabled = false;
-          btnStartBatch.textContent = "Start Batch Analysis";
-          showToast(`Batch Analysis Completed! Analyzed ${total} tracks successfully.`, "success", 5000);
-          modalBatch.classList.add("hidden");
-          batchProgressContainer.classList.add("hidden");
+          if (batchProgressContainer) batchProgressContainer.classList.add("hidden");
+          
+          if (batchResultsSummary) {
+            batchResultsSummary.innerHTML = `
+              <strong>Batch Processing Complete!</strong><br>
+              Analyzed ${total} tracks in ${(done / Math.max(0.1, b.tracks_per_sec || 1)).toFixed(1)}s.
+            `;
+            batchResultsSummary.classList.remove("hidden");
+          }
+
+          if (btnStartBatch) {
+            btnStartBatch.textContent = "Done";
+            btnStartBatch.disabled = false;
+          }
+
           await loadTracks();
         }
       }
-    } catch (err) {
-      console.error("Batch poll error:", err);
-    }
+    } catch (err) {}
   }, 400);
 }
 
-// Rekordbox XML Export Modal
-btnExportXml.addEventListener("click", () => {
-  modalExport.classList.remove("hidden");
-});
-
-btnCloseExportModal.addEventListener("click", () => {
-  modalExport.classList.add("hidden");
-});
-
-btnConfirmExport.addEventListener("click", async () => {
-  const outPath = exportPathInput.value.trim() || "rekordbox.xml";
-  try {
-    const res = await fetch(`${API_BASE}/api/export_rekordbox`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ output_path: outPath })
-    });
-    const data = await res.json();
-    if (data.status === "ok") {
-      showToast(data.message, "success", 5000);
-      modalExport.classList.add("hidden");
-    } else {
-      showToast(`Export Error: ${data.message}`, "error");
+// Rekordbox Export
+if (btnExportXml) btnExportXml.addEventListener("click", () => modalExport.classList.remove("hidden"));
+if (btnCloseExportModal) btnCloseExportModal.addEventListener("click", () => modalExport.classList.add("hidden"));
+if (btnConfirmExport) {
+  btnConfirmExport.addEventListener("click", async () => {
+    const outPath = exportPathInput ? exportPathInput.value.trim() : "rekordbox.xml";
+    try {
+      const res = await fetch(`${API_BASE}/api/export_rekordbox`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ output_path: outPath })
+      });
+      const data = await res.json();
+      if (data.status === "ok") {
+        showToast(data.message, "success");
+        modalExport.classList.add("hidden");
+      }
+    } catch (err) {
+      showToast(`Export error: ${err.message}`, "error");
     }
-  } catch (err) {
-    showToast(`Export error: ${err.message}`, "error");
-  }
-});
+  });
+}
 
-// Waveform Canvas & Container Seek Event Registration
+// Shortcuts Modal
+if (btnShortcuts) btnShortcuts.addEventListener("click", () => modalShortcuts.classList.remove("hidden"));
+if (btnCloseShortcutsModal) btnCloseShortcutsModal.addEventListener("click", () => modalShortcuts.classList.add("hidden"));
+if (btnCloseShortcutsFooter) btnCloseShortcutsFooter.addEventListener("click", () => modalShortcuts.classList.add("hidden"));
+
+// Continuous Draggable Scrubber & Waveform Seek
 function initSeekListeners() {
-  const container = document.getElementById("waveform-canvas-container");
-  const wrapper = document.getElementById("waveform-scroll-wrapper");
-  const canvas = document.getElementById("waveform-canvas");
-
-  const onSeekClick = (e) => {
-    if (e.target.closest(".cue-marker") || e.target.closest(".cue-label") || e.target.closest("button") || e.target.closest("select") || e.target.closest("input")) {
-      return;
-    }
-    const targetEl = wrapper || canvas || container;
-    if (!targetEl) return;
-    const rect = targetEl.getBoundingClientRect();
+  const onWaveformClick = (e) => {
+    if (!selectedTrack) return;
+    const target = waveformScrollWrapper || waveformCanvas || waveformCanvasContainer;
+    if (!target) return;
+    const rect = target.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
     const pct = Math.min(1, Math.max(0, clickX / rect.width));
     seekToPosition(pct);
   };
 
-  if (wrapper) wrapper.onclick = onSeekClick;
-  else if (canvas) canvas.onclick = onSeekClick;
-  else if (container) container.onclick = onSeekClick;
-}
-
-// Window Resize Auto-Refit
-window.addEventListener("resize", () => {
-  if (selectedTrack) {
-    drawRGBWaveform(selectedTrack);
-    renderCueMarkers(selectedTrack);
+  if (waveformCanvasContainer) {
+    waveformCanvasContainer.onclick = onWaveformClick;
+    waveformCanvasContainer.addEventListener("wheel", handleWaveformWheel, { passive: false });
   }
-});
+  if (waveformScrollWrapper) waveformScrollWrapper.onclick = onWaveformClick;
+  if (waveformCanvas) waveformCanvas.onclick = onWaveformClick;
 
-// Filter & Play Event Listeners
-searchInput.addEventListener("input", loadTracks);
-filterCamelot.addEventListener("change", loadTracks);
-filterEnergy.addEventListener("change", loadTracks);
+  if (waveformMiniOverview) {
+    waveformMiniOverview.onclick = (e) => {
+      const rect = waveformMiniOverview.getBoundingClientRect();
+      const pct = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+      seekToPosition(pct);
+    };
+  }
 
-btnPlay.addEventListener("click", togglePlay);
+  // Bottom Player Scrubber: Continuous Click & Drag
+  if (playerWaveformScrubber) {
+    const handleScrubberPointer = (e) => {
+      if (!selectedTrack) return;
+      const rect = playerWaveformScrubber.getBoundingClientRect();
+      const pct = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+      seekToPosition(pct, isPlaying);
+    };
 
-if (btnAddCuePlayhead) {
-  btnAddCuePlayhead.addEventListener("click", addCueAtPlayhead);
+    playerWaveformScrubber.addEventListener("pointerdown", (e) => {
+      isDraggingScrubber = true;
+      if (playerScrubberHandle) playerScrubberHandle.classList.add("is-dragging");
+      handleScrubberPointer(e);
+
+      const onPointerMove = (moveEvt) => {
+        if (isDraggingScrubber) {
+          handleScrubberPointer(moveEvt);
+        }
+      };
+
+      const onPointerUp = (upEvt) => {
+        if (isDraggingScrubber) {
+          isDraggingScrubber = false;
+          if (playerScrubberHandle) playerScrubberHandle.classList.remove("is-dragging");
+          handleScrubberPointer(upEvt);
+          if (currentAudio && pendingSeekSec !== null) {
+            try { currentAudio.currentTime = pendingSeekSec; } catch (err) {}
+          }
+        }
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+      };
+
+      window.addEventListener("pointermove", onPointerMove);
+      window.addEventListener("pointerup", onPointerUp);
+    });
+  }
 }
 
-if (btnSaveTeachAi) {
-  btnSaveTeachAi.addEventListener("click", saveAndTeachAI);
+// Resizable Workspace Dividers & Independent Column Resizing (Section 3, 4, 5, 8)
+function initResizers() {
+  const DEFAULT_SIDEBAR_WIDTH = 180;
+  const DEFAULT_COLLECTION_WIDTH = 410;
+  const defaultColWidths = { track: 145, artist: 105, key: 55, bpm: 50, energy: 55 };
+
+  // 1. Sidebar Resizer
+  if (resizerSidebar && sidebarNav) {
+    let isResizing = false;
+    resizerSidebar.addEventListener("pointerdown", (e) => {
+      isResizing = true;
+      resizerSidebar.classList.add("resizing");
+      const startX = e.clientX;
+      const startW = sidebarNav.offsetWidth;
+
+      const onMove = (mv) => {
+        if (!isResizing) return;
+        const newW = Math.max(60, Math.min(250, startW + (mv.clientX - startX)));
+        sidebarNav.style.width = `${newW}px`;
+      };
+      const onUp = () => {
+        if (isResizing) {
+          isResizing = false;
+          resizerSidebar.classList.remove("resizing");
+          localStorage.setItem("ah_sidebar_width", sidebarNav.offsetWidth);
+        }
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    });
+
+    // Double-click to restore default size (Silent reset without notification toast)
+    resizerSidebar.addEventListener("dblclick", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      sidebarNav.style.width = `${DEFAULT_SIDEBAR_WIDTH}px`;
+      localStorage.setItem("ah_sidebar_width", DEFAULT_SIDEBAR_WIDTH.toString());
+      if (selectedTrack) {
+        requestAnimationFrame(() => {
+          drawRGBWaveform(selectedTrack);
+          renderCueMarkers(selectedTrack);
+        });
+      }
+    });
+
+    const savedSidebarW = localStorage.getItem("ah_sidebar_width");
+    if (savedSidebarW) sidebarNav.style.width = `${savedSidebarW}px`;
+  }
+
+  // 2. Collection Column Resizer
+  if (resizerCollection && collectionColumn) {
+    let isResizing = false;
+    resizerCollection.addEventListener("pointerdown", (e) => {
+      isResizing = true;
+      resizerCollection.classList.add("resizing");
+      const startX = e.clientX;
+      const startW = collectionColumn.offsetWidth;
+
+      const onMove = (mv) => {
+        if (!isResizing) return;
+        const newW = Math.max(280, Math.min(650, startW + (mv.clientX - startX)));
+        collectionColumn.style.width = `${newW}px`;
+      };
+      const onUp = () => {
+        if (isResizing) {
+          isResizing = false;
+          resizerCollection.classList.remove("resizing");
+          localStorage.setItem("ah_collection_width", collectionColumn.offsetWidth);
+        }
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    });
+
+    // Double-click to restore default size (Silent reset without notification toast)
+    resizerCollection.addEventListener("dblclick", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      collectionColumn.style.width = `${DEFAULT_COLLECTION_WIDTH}px`;
+      localStorage.setItem("ah_collection_width", DEFAULT_COLLECTION_WIDTH.toString());
+      if (selectedTrack) {
+        requestAnimationFrame(() => {
+          drawRGBWaveform(selectedTrack);
+          renderCueMarkers(selectedTrack);
+        });
+      }
+    });
+
+    const savedColW = localStorage.getItem("ah_collection_width");
+    if (savedColW) collectionColumn.style.width = `${savedColW}px`;
+  }
+
+  // 3. HotCue & Harmonic Mixing Resizer (True Two-Way Splitter - Section 5 & 8)
+  if (resizerWidgets && hotcueWidget && harmonicWidget) {
+    let isResizing = false;
+    resizerWidgets.addEventListener("pointerdown", (e) => {
+      isResizing = true;
+      resizerWidgets.classList.add("resizing");
+      const container = document.getElementById("workstation-dual-widgets");
+      const containerRect = container.getBoundingClientRect();
+      const totalW = containerRect.width;
+
+      const onMove = (mv) => {
+        if (!isResizing) return;
+        const pointerX = mv.clientX - containerRect.left;
+        const newHotcueW = Math.max(160, Math.min(totalW - 160, pointerX));
+        hotcueWidget.style.flex = `0 0 ${newHotcueW}px`;
+        harmonicWidget.style.flex = `1 1 0`;
+      };
+
+      const onUp = () => {
+        if (isResizing) {
+          isResizing = false;
+          resizerWidgets.classList.remove("resizing");
+        }
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+      };
+
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    });
+
+    // Double-click to restore default size (Silent reset without notification toast)
+    resizerWidgets.addEventListener("dblclick", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      hotcueWidget.style.flex = `1 1 0`;
+      harmonicWidget.style.flex = `1 1 0`;
+    });
+  }
+
+  // 4. Independent Table Column Resizers (Section 3, 4, 8)
+  if (collectionTableHeader) {
+    const minWidths = { track: 80, artist: 70, key: 45, bpm: 40, energy: 45 };
+    const maxWidths = { track: 320, artist: 220, key: 100, bpm: 90, energy: 90 };
+    const savedWidths = JSON.parse(localStorage.getItem("ah_col_widths_v3") || "{}");
+
+    const ths = collectionTableHeader.querySelectorAll(".th-resizable");
+    ths.forEach(th => {
+      const colName = th.dataset.col;
+      if (savedWidths[colName]) {
+        th.style.width = `${savedWidths[colName]}px`;
+      }
+
+      const resizer = th.querySelector(".col-resizer");
+      if (resizer) {
+        resizer.addEventListener("pointerdown", (e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          const startX = e.clientX;
+          const startW = th.offsetWidth;
+          resizer.classList.add("resizing");
+
+          const onMove = (mv) => {
+            const minW = minWidths[colName] || 40;
+            const maxW = maxWidths[colName] || 400;
+            const newW = Math.max(minW, Math.min(maxW, startW + (mv.clientX - startX)));
+            th.style.width = `${newW}px`;
+          };
+
+          const onUp = () => {
+            resizer.classList.remove("resizing");
+            const currentWidths = {};
+            ths.forEach(t => {
+              currentWidths[t.dataset.col] = t.offsetWidth;
+            });
+            localStorage.setItem("ah_col_widths_v3", JSON.stringify(currentWidths));
+            window.removeEventListener("pointermove", onMove);
+            window.removeEventListener("pointerup", onUp);
+          };
+
+          window.addEventListener("pointermove", onMove);
+          window.addEventListener("pointerup", onUp);
+        });
+
+        // Double-click on column resizer resets ONLY that column to default (Silent reset)
+        resizer.addEventListener("dblclick", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const defaultW = defaultColWidths[colName] || 100;
+          th.style.width = `${defaultW}px`;
+          const currentWidths = JSON.parse(localStorage.getItem("ah_col_widths_v3") || "{}");
+          currentWidths[colName] = defaultW;
+          localStorage.setItem("ah_col_widths_v3", JSON.stringify(currentWidths));
+        });
+      }
+    });
+  }
+
+  // 5. Waveform Auto-Resize Observer (Prevents black dead space - Section 6)
+  if (window.ResizeObserver && waveformCanvasContainer) {
+    const ro = new ResizeObserver(() => {
+      if (selectedTrack) {
+        drawRGBWaveform(selectedTrack);
+        renderCueMarkers(selectedTrack);
+      }
+    });
+    ro.observe(waveformCanvasContainer);
+  }
 }
 
-// BPM Editor Event Listeners
+// Persistent Player Controls
+if (btnPlayerPlay) btnPlayerPlay.addEventListener("click", togglePlay);
+if (btnPlay) btnPlay.addEventListener("click", togglePlay);
+
+if (btnPlayerPrev) {
+  btnPlayerPrev.addEventListener("click", () => {
+    if (tracksData.length === 0) return;
+    const curIdx = selectedTrack ? tracksData.findIndex(t => t.id === selectedTrack.id) : 0;
+    const prevIdx = (curIdx - 1 + tracksData.length) % tracksData.length;
+    selectTrack(tracksData[prevIdx]);
+    togglePlay();
+  });
+}
+
+if (btnPlayerNext) {
+  btnPlayerNext.addEventListener("click", () => {
+    if (tracksData.length === 0) return;
+    const curIdx = selectedTrack ? tracksData.findIndex(t => t.id === selectedTrack.id) : 0;
+    const nextIdx = (curIdx + 1) % tracksData.length;
+    selectTrack(tracksData[nextIdx]);
+    togglePlay();
+  });
+}
+
+if (btnPlayerRepeat) {
+  btnPlayerRepeat.addEventListener("click", () => {
+    isLooping = !isLooping;
+    btnPlayerRepeat.style.color = isLooping ? "#3b82f6" : "var(--text-secondary)";
+  });
+}
+
+if (btnPlayerShuffle) {
+  btnPlayerShuffle.addEventListener("click", () => {
+    isShuffled = !isShuffled;
+    btnPlayerShuffle.style.color = isShuffled ? "#3b82f6" : "var(--text-secondary)";
+  });
+}
+
+if (playerVolumeSlider) {
+  playerVolumeSlider.addEventListener("input", (e) => {
+    const vol = parseFloat(e.target.value);
+    if (currentAudio) currentAudio.volume = vol;
+  });
+}
+
+// Sidebar Navigation
+if (navCollection) {
+  navCollection.addEventListener("click", () => {
+    document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
+    navCollection.classList.add("active");
+  });
+}
+if (navAnalyze) navAnalyze.addEventListener("click", () => btnImport.click());
+if (navSettings) navSettings.addEventListener("click", () => modalShortcuts.classList.remove("hidden"));
+
+// BPM Calibration
 if (inputBpm) {
   inputBpm.addEventListener("change", () => {
     if (!selectedTrack) return;
@@ -1534,7 +2202,8 @@ if (inputBpm) {
     if (!isNaN(newBpm) && newBpm >= 40 && newBpm <= 260) {
       selectedTrack.bpm = newBpm;
       drawRGBWaveform(selectedTrack);
-      showToast(`BPM calibrated to ${newBpm.toFixed(2)}. Beatgrid recalculated!`, "info", 2500);
+      if (heroBpmVal) heroBpmVal.textContent = Math.round(newBpm).toString();
+      if (playerBadgeBpm) playerBadgeBpm.textContent = Math.round(newBpm).toString();
     }
   });
 }
@@ -1544,8 +2213,9 @@ if (btnBpmHalf) {
     if (!selectedTrack || !selectedTrack.bpm) return;
     selectedTrack.bpm = parseFloat((selectedTrack.bpm / 2).toFixed(2));
     if (inputBpm) inputBpm.value = selectedTrack.bpm.toFixed(2);
+    if (heroBpmVal) heroBpmVal.textContent = Math.round(selectedTrack.bpm).toString();
+    if (playerBadgeBpm) playerBadgeBpm.textContent = Math.round(selectedTrack.bpm).toString();
     drawRGBWaveform(selectedTrack);
-    showToast(`BPM divided by 2 (/2): ${selectedTrack.bpm} BPM`, "info", 2500);
   });
 }
 
@@ -1554,8 +2224,9 @@ if (btnBpmDouble) {
     if (!selectedTrack || !selectedTrack.bpm) return;
     selectedTrack.bpm = parseFloat((selectedTrack.bpm * 2).toFixed(2));
     if (inputBpm) inputBpm.value = selectedTrack.bpm.toFixed(2);
+    if (heroBpmVal) heroBpmVal.textContent = Math.round(selectedTrack.bpm).toString();
+    if (playerBadgeBpm) playerBadgeBpm.textContent = Math.round(selectedTrack.bpm).toString();
     drawRGBWaveform(selectedTrack);
-    showToast(`BPM multiplied by 2 (x2): ${selectedTrack.bpm} BPM`, "info", 2500);
   });
 }
 
@@ -1566,9 +2237,7 @@ if (btnBpmTap) {
     tapTimes = tapTimes.filter(t => (now - t) <= 3000);
     if (tapTimes.length >= 3) {
       const intervals = [];
-      for (let i = 1; i < tapTimes.length; i++) {
-        intervals.push(tapTimes[i] - tapTimes[i - 1]);
-      }
+      for (let i = 1; i < tapTimes.length; i++) intervals.push(tapTimes[i] - tapTimes[i - 1]);
       const avgMs = intervals.reduce((a, b) => a + b, 0) / intervals.length;
       if (avgMs > 0) {
         const calculatedBpm = parseFloat((60000 / avgMs).toFixed(2));
@@ -1576,22 +2245,47 @@ if (btnBpmTap) {
           if (selectedTrack) {
             selectedTrack.bpm = calculatedBpm;
             drawRGBWaveform(selectedTrack);
+            if (heroBpmVal) heroBpmVal.textContent = Math.round(calculatedBpm).toString();
+            if (playerBadgeBpm) playerBadgeBpm.textContent = Math.round(calculatedBpm).toString();
           }
           if (inputBpm) inputBpm.value = calculatedBpm.toFixed(2);
-          showToast(`Tap Tempo: ${calculatedBpm} BPM detected!`, "info", 2000);
         }
       }
     }
   });
 }
 
-// Beatgrid & Snap Toggle Event Listeners
+if (btnSetFirstBeat) {
+  btnSetFirstBeat.addEventListener("click", () => {
+    if (!selectedTrack) return;
+    const curSec = getCurrentPlayheadSec();
+    selectedTrack.first_beat_offset = curSec;
+    drawRGBWaveform(selectedTrack);
+    renderCueMarkers(selectedTrack);
+  });
+}
+
+if (btnGridNudgeLeft) {
+  btnGridNudgeLeft.addEventListener("click", () => {
+    if (!selectedTrack) return;
+    selectedTrack.first_beat_offset = (selectedTrack.first_beat_offset || 0) - 0.005;
+    drawRGBWaveform(selectedTrack);
+  });
+}
+
+if (btnGridNudgeRight) {
+  btnGridNudgeRight.addEventListener("click", () => {
+    if (!selectedTrack) return;
+    selectedTrack.first_beat_offset = (selectedTrack.first_beat_offset || 0) + 0.005;
+    drawRGBWaveform(selectedTrack);
+  });
+}
+
 if (btnToggleBeatgrid) {
   btnToggleBeatgrid.addEventListener("click", () => {
     showBeatgrid = !showBeatgrid;
     btnToggleBeatgrid.classList.toggle("active", showBeatgrid);
     if (selectedTrack) drawRGBWaveform(selectedTrack);
-    showToast(`Beatgrid ${showBeatgrid ? 'Enabled' : 'Disabled'}`, "info", 2000);
   });
 }
 
@@ -1599,235 +2293,96 @@ if (btnToggleSnap) {
   btnToggleSnap.addEventListener("click", () => {
     snapToGrid = !snapToGrid;
     btnToggleSnap.classList.toggle("active", snapToGrid);
-    showToast(`Magnetic Snap ${snapToGrid ? 'Enabled' : 'Disabled'}`, "info", 2000);
   });
 }
 
-// Zoom Controls
-if (btnZoomIn) {
-  btnZoomIn.addEventListener("click", () => setZoom(zoomLevel * 1.5));
-}
-if (btnZoomOut) {
-  btnZoomOut.addEventListener("click", () => setZoom(zoomLevel / 1.5));
-}
-if (btnZoomReset) {
-  btnZoomReset.addEventListener("click", () => setZoom(1.0));
-}
+// Zoom Button Handlers
+if (btnZoomIn) btnZoomIn.addEventListener("click", () => setZoom(zoomLevel * 1.5));
+if (btnZoomOut) btnZoomOut.addEventListener("click", () => setZoom(zoomLevel / 1.5));
+if (btnZoomReset) btnZoomReset.addEventListener("click", () => setZoom(1.0));
 
-if (waveformCanvasContainer) {
-  waveformCanvasContainer.addEventListener("wheel", (e) => {
-    if (e.ctrlKey || e.metaKey || e.altKey) {
-      e.preventDefault();
-      const zoomFactor = e.deltaY < 0 ? 1.25 : (1 / 1.25);
-      setZoom(zoomLevel * zoomFactor, { mouseClientX: e.clientX });
+if (btnAddCuePlayhead) btnAddCuePlayhead.addEventListener("click", addCueAtPlayhead);
+
+let isEditModeActive = false;
+if (btnEditCues) {
+  btnEditCues.addEventListener("click", () => {
+    if (!selectedTrack || !selectedTrack.cues || selectedTrack.cues.length === 0) return;
+
+    isEditModeActive = !isEditModeActive;
+    btnEditCues.classList.toggle("active", isEditModeActive);
+
+    const rows = document.querySelectorAll(".hotcue-pill-row");
+    let targetRow = document.querySelector(".hotcue-pill-row.active") || rows[0];
+    if (targetRow) {
+      const rowIndex = Array.from(rows).indexOf(targetRow);
+      if (rowIndex !== -1 && selectedTrack.cues[rowIndex]) {
+        editHotCueRow(targetRow, selectedTrack.cues[rowIndex], selectedTrack);
+      }
     }
-  }, { passive: false });
-}
-
-// Keyboard Shortcuts Modal Event Listeners
-if (btnShortcuts && modalShortcuts) {
-  btnShortcuts.addEventListener("click", () => {
-    modalShortcuts.classList.remove("hidden");
-  });
-}
-if (btnCloseShortcutsModal && modalShortcuts) {
-  btnCloseShortcutsModal.addEventListener("click", () => {
-    modalShortcuts.classList.add("hidden");
-  });
-}
-if (btnCloseShortcutsFooter && modalShortcuts) {
-  btnCloseShortcutsFooter.addEventListener("click", () => {
-    modalShortcuts.classList.add("hidden");
   });
 }
 
-// Waveform Panel Collapse / Expand Manager
-function toggleWaveformPanel(forceState) {
-  if (!waveformPanel) return;
-  const isCurrentlyCollapsed = waveformPanel.classList.contains("collapsed");
-  const willCollapse = (typeof forceState === "boolean") ? forceState : !isCurrentlyCollapsed;
+if (btnSaveTeachAi) btnSaveTeachAi.addEventListener("click", saveAndTeachAI);
 
-  waveformPanel.classList.toggle("collapsed", willCollapse);
-  try {
-    localStorage.setItem("audioharmonix_waveform_collapsed", willCollapse ? "1" : "0");
-  } catch (e) {}
+if (searchInput) searchInput.addEventListener("input", loadTracks);
+if (filterCamelot) filterCamelot.addEventListener("change", loadTracks);
+if (filterEnergy) filterEnergy.addEventListener("change", loadTracks);
 
-  const drawerPillText = document.getElementById("drawer-pill-text");
-  if (drawerPillText) {
-    drawerPillText.textContent = willCollapse
-      ? "Expand Waveform & HotCues (W)"
-      : "Collapse Waveform (W)";
-  }
-
-  if (btnToggleWaveformCollapse) {
-    btnToggleWaveformCollapse.title = willCollapse
-      ? "Expand Waveform Panel (Key W)"
-      : "Collapse Waveform to expand Playlist (Key W)";
-    btnToggleWaveformCollapse.setAttribute(
-      "aria-label",
-      willCollapse ? "Expand Waveform Panel" : "Collapse Waveform Panel"
-    );
-  }
-
-  // Redraw canvas upon expanding to guarantee crisp DPI rendering
-  if (!willCollapse && selectedTrack) {
-    setTimeout(() => {
-      drawRGBWaveform(selectedTrack);
-      renderCueMarkers(selectedTrack);
-    }, 120);
-  }
-}
-
-if (btnToggleWaveformCollapse) {
-  btnToggleWaveformCollapse.addEventListener("click", () => toggleWaveformPanel());
-}
-
-// Set First Beat (1.1) of bar to current needle position
-function setFirstBeatAtPlayhead() {
-  if (!selectedTrack) {
-    showToast("Select a track to calibrate First Beat (1.1).", "error");
-    return;
-  }
-
-  const curSec = getCurrentPlayheadSec();
-  const duration = selectedTrack.duration_secs || 180;
-  const clampedSec = Math.max(0, Math.min(duration, parseFloat(curSec.toFixed(3))));
-
-  if (!selectedTrack.cues) selectedTrack.cues = [];
-
-  // Find existing FIRST_BEAT cue or update/create
-  let fbCue = selectedTrack.cues.find(c => (c.cue_type || '').includes('FIRST_BEAT') || (c.cue_type || '').includes('INTRO'));
-  if (fbCue) {
-    fbCue.position_secs = clampedSec;
-    fbCue.cue_type = "FIRST_BEAT";
-  } else {
-    fbCue = { cue_type: "FIRST_BEAT", position_secs: clampedSec, hotcue_num: 1 };
-    selectedTrack.cues.unshift(fbCue);
-  }
-
-  selectedTrack.first_beat_offset = clampedSec;
-  selectedTrack.cues.sort((a, b) => (a.position_secs || 0) - (b.position_secs || 0));
-
-  drawRGBWaveform(selectedTrack);
-  renderCueMarkers(selectedTrack);
-  renderCuePills(selectedTrack);
-
-  showToast(`Beatgrid 1.1 calibrated to ${formatTime(clampedSec)}. Click 'Save HotCues' to persist and adapt AI.`, "success", 4000);
-}
-
-// Micro-nudge the entire Beatgrid left or right by delta (e.g. ±5ms)
-function nudgeBeatgrid(deltaSec) {
-  if (!selectedTrack) return;
-  const duration = selectedTrack.duration_secs || 180;
-  if (!selectedTrack.cues) selectedTrack.cues = [];
-
-  let fbCue = selectedTrack.cues.find(c => (c.cue_type || '').includes('FIRST_BEAT') || (c.cue_type || '').includes('INTRO'));
-  let curOffset = (typeof selectedTrack.first_beat_offset === "number") ? selectedTrack.first_beat_offset : (fbCue ? fbCue.position_secs : 0.0);
-  let newOffset = Math.max(0, Math.min(duration, parseFloat((curOffset + deltaSec).toFixed(4))));
-
-  if (fbCue) {
-    fbCue.position_secs = newOffset;
-  } else {
-    fbCue = { cue_type: "FIRST_BEAT", position_secs: newOffset, hotcue_num: 1 };
-    selectedTrack.cues.unshift(fbCue);
-  }
-
-  selectedTrack.first_beat_offset = newOffset;
-  drawRGBWaveform(selectedTrack);
-  renderCueMarkers(selectedTrack);
-  renderCuePills(selectedTrack);
-}
-
-// Setup hold-to-repeat for grid nudge buttons (5ms step)
-function setupGridNudgeHold(buttonEl, deltaSec) {
-  if (!buttonEl) return;
-  let holdTimeout = null;
-  let repeatInterval = null;
-
-  const performNudge = (e) => {
-    e.stopPropagation();
-    e.preventDefault();
-    nudgeBeatgrid(deltaSec);
-  };
-
-  const startHold = (e) => {
-    performNudge(e);
-    holdTimeout = setTimeout(() => {
-      repeatInterval = setInterval(() => {
-        nudgeBeatgrid(deltaSec);
-      }, 50);
-    }, 220);
-  };
-
-  const stopHold = () => {
-    if (holdTimeout) clearTimeout(holdTimeout);
-    if (repeatInterval) clearInterval(repeatInterval);
-    holdTimeout = null;
-    repeatInterval = null;
-  };
-
-  buttonEl.addEventListener("mousedown", startHold);
-  buttonEl.addEventListener("mouseup", stopHold);
-  buttonEl.addEventListener("mouseleave", stopHold);
-  buttonEl.addEventListener("touchstart", startHold, { passive: false });
-  buttonEl.addEventListener("touchend", stopHold);
-  buttonEl.addEventListener("touchcancel", stopHold);
-}
-
-if (btnSetFirstBeat) {
-  btnSetFirstBeat.addEventListener("click", () => setFirstBeatAtPlayhead());
-}
-setupGridNudgeHold(btnGridNudgeLeft, -0.005);
-setupGridNudgeHold(btnGridNudgeRight, +0.005);
-
-// Global DJ Keyboard Shortcuts Listener
+// Global DJ Keyboard Shortcuts
 window.addEventListener("keydown", (e) => {
-  // If typing in form input, textarea, or select, bypass global DJ keys
   const activeEl = document.activeElement;
   if (activeEl && (activeEl.tagName === "INPUT" || activeEl.tagName === "TEXTAREA" || activeEl.tagName === "SELECT")) {
-    if (e.key === "Escape") {
-      activeEl.blur();
-    }
+    if (e.key === "Escape") activeEl.blur();
     return;
   }
 
-  // Dismiss any open modal on Escape
   if (e.key === "Escape") {
-    document.querySelectorAll(".modal-backdrop").forEach(m => {
-      m.classList.add("hidden");
-    });
+    document.querySelectorAll(".modal-backdrop").forEach(m => m.classList.add("hidden"));
     return;
   }
 
-  // Open / Close Shortcuts Modal on ? or F1
+  if ((e.ctrlKey || e.metaKey) && (e.key === "b" || e.key === "B")) {
+    e.preventDefault();
+    if (btnCollapseSidebar) btnCollapseSidebar.click();
+    return;
+  }
+
   if (e.key === "?" || e.key === "F1") {
     e.preventDefault();
     if (modalShortcuts) modalShortcuts.classList.toggle("hidden");
     return;
   }
 
-  // Spacebar: Play / Pause Audio
   if (e.code === "Space" || e.key === " ") {
     e.preventDefault();
     togglePlay();
     return;
   }
 
-  // Key W: Toggle Waveform Collapse / Maximize Playlist
-  if (e.key === "w" || e.key === "W") {
-    e.preventDefault();
-    toggleWaveformPanel();
-    return;
-  }
-
-  // Shift + M: Set First Beat (1.1) at current playhead
   if (e.shiftKey && (e.key === "M" || e.key === "m")) {
     e.preventDefault();
-    setFirstBeatAtPlayhead();
+    if (btnSetFirstBeat) btnSetFirstBeat.click();
     return;
   }
 
-  // Arrow Left / Right: Beat & Bar Nudge / Scrub
+  if (e.key === "m" || e.key === "M") {
+    e.preventDefault();
+    addCueAtPlayhead();
+    return;
+  }
+
+  if (e.key === "b" || e.key === "B") {
+    e.preventDefault();
+    if (btnToggleBeatgrid) btnToggleBeatgrid.click();
+    return;
+  }
+
+  if (e.key === "s" || e.key === "S") {
+    e.preventDefault();
+    if (btnToggleSnap) btnToggleSnap.click();
+    return;
+  }
+
   if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
     e.preventDefault();
     if (!selectedTrack) return;
@@ -1836,48 +2391,22 @@ window.addEventListener("keydown", (e) => {
     const beatSec = 60.0 / bpm;
     const stepSec = e.shiftKey ? (beatSec * 4) : beatSec;
     const curSec = (currentAudio && !isNaN(currentAudio.currentTime)) ? currentAudio.currentTime : (simulatedCurTime || 0);
-
-    let targetSec = e.key === "ArrowLeft" ? (curSec - stepSec) : (curSec + stepSec);
-    targetSec = Math.max(0, Math.min(dur, targetSec));
+    const targetSec = Math.max(0, Math.min(dur, e.key === "ArrowLeft" ? (curSec - stepSec) : (curSec + stepSec)));
     seekToPosition(targetSec / dur);
     return;
   }
 
-  // Numbers 1 to 8: Jump to HotCue 1 - 8 (preserves current play/pause state)
   if (/^[1-8]$/.test(e.key)) {
     const cueIndex = parseInt(e.key, 10) - 1;
-    if (selectedTrack && selectedTrack.cues && selectedTrack.cues[cueIndex] && typeof selectedTrack.cues[cueIndex].position_secs === 'number') {
+    if (selectedTrack && selectedTrack.cues && selectedTrack.cues[cueIndex]) {
       e.preventDefault();
       const cue = selectedTrack.cues[cueIndex];
       const dur = selectedTrack.duration_secs || 180;
       seekToPosition(cue.position_secs / dur);
-      showToast(`Jumped to HotCue ${cueIndex + 1} (${cue.cue_type || 'Cue'})`, "info", 1800);
       return;
     }
   }
 
-  // Key M: Add HotCue at Playhead
-  if (e.key === "m" || e.key === "M") {
-    e.preventDefault();
-    addCueAtPlayhead();
-    return;
-  }
-
-  // Key B: Toggle Beatgrid Lines
-  if (e.key === "b" || e.key === "B") {
-    e.preventDefault();
-    if (btnToggleBeatgrid) btnToggleBeatgrid.click();
-    return;
-  }
-
-  // Key S: Toggle Snap to Beatgrid
-  if (e.key === "s" || e.key === "S") {
-    e.preventDefault();
-    if (btnToggleSnap) btnToggleSnap.click();
-    return;
-  }
-
-  // Zoom Hotkeys: + / = (Zoom In), - (Zoom Out), 0 (Reset)
   if (e.key === "+" || e.key === "=") {
     e.preventDefault();
     setZoom(zoomLevel * 1.5);
@@ -1891,20 +2420,18 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "0") {
     e.preventDefault();
     setZoom(1.0);
-    return;
   }
 });
 
-// Initial Load
+// Initialization
 document.addEventListener("DOMContentLoaded", () => {
   initSeekListeners();
-  loadTracks();
+  initResizers();
+  
+  const savedColState = localStorage.getItem("ah_sidebar_collapsed");
+  if (savedColState === "1" && sidebarNav) {
+    sidebarNav.classList.add("collapsed");
+  }
 
-  // Restore saved waveform collapse state if preference was saved
-  try {
-    const savedCollapsed = localStorage.getItem("audioharmonix_waveform_collapsed");
-    if (savedCollapsed === "1") {
-      toggleWaveformPanel(true);
-    }
-  } catch (e) {}
+  loadTracks();
 });

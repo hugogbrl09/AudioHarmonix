@@ -50,6 +50,126 @@ batch_state = {
 NUM_THREADS = max(1, os.cpu_count() - 1)
 thread_pool = ThreadPoolExecutor(max_workers=NUM_THREADS)
 
+def extract_audio_metadata(file_path):
+    """
+    Extracts real ID3 / Vorbis / MP4 / WAV metadata and embedded artwork from audio files.
+    Falls back gracefully to filename without extension only if metadata is absent.
+    """
+    file_name = os.path.basename(file_path)
+    fallback_title = os.path.splitext(file_name)[0]
+    
+    title = None
+    artist = None
+    album = None
+    genre = None
+    has_artwork = False
+
+    try:
+        import mutagen
+        audio = mutagen.File(file_path)
+        if audio:
+            # 1. Title Extraction
+            for k in ['TIT2', 'title', '\xa9nam', 'TITLE', 'Title']:
+                val = audio.get(k)
+                if val:
+                    val_str = str(val[0] if isinstance(val, (list, tuple)) else val).strip()
+                    if val_str:
+                        title = val_str
+                        break
+
+            # 2. Artist Extraction
+            for k in ['TPE1', 'artist', '\xa9ART', 'ARTIST', 'Artist', 'TPE2']:
+                val = audio.get(k)
+                if val:
+                    val_str = str(val[0] if isinstance(val, (list, tuple)) else val).strip()
+                    if val_str:
+                        artist = val_str
+                        break
+
+            # 3. Album Extraction
+            for k in ['TALB', 'album', '\xa9alb', 'ALBUM', 'Album']:
+                val = audio.get(k)
+                if val:
+                    val_str = str(val[0] if isinstance(val, (list, tuple)) else val).strip()
+                    if val_str:
+                        album = val_str
+                        break
+
+            # 4. Check for embedded artwork
+            if hasattr(audio, 'tags') and audio.tags:
+                for key in audio.tags.keys():
+                    if str(key).startswith('APIC'):
+                        has_artwork = True
+                        break
+            if hasattr(audio, 'pictures') and audio.pictures:
+                has_artwork = True
+            if 'covr' in audio and audio['covr']:
+                has_artwork = True
+    except Exception as e:
+        print(f"[-] Notice during metadata extraction for {file_path}: {e}")
+
+    if not title:
+        title = fallback_title
+    if not artist:
+        artist = "Unknown Artist"
+    if not album:
+        album = "Unknown Album"
+
+    return {
+        "title": title,
+        "artist": artist,
+        "album": album,
+        "genre": genre,
+        "has_artwork": has_artwork
+    }
+
+def get_track_artwork(file_path):
+    """Extracts raw image bytes and mime type from embedded audio file artwork"""
+    try:
+        import mutagen
+        audio = mutagen.File(file_path)
+        if not audio:
+            return None, None
+
+        if hasattr(audio, 'tags') and audio.tags:
+            for k, v in audio.tags.items():
+                if str(k).startswith('APIC'):
+                    mime = getattr(v, 'mime', 'image/jpeg') or 'image/jpeg'
+                    return v.data, mime
+
+        if hasattr(audio, 'pictures') and audio.pictures:
+            pic = audio.pictures[0]
+            mime = getattr(pic, 'mime', 'image/jpeg') or 'image/jpeg'
+            return pic.data, mime
+
+        if 'covr' in audio and audio['covr']:
+            covr = audio['covr'][0]
+            mime = 'image/png' if covr.startswith(b'\x89PNG') else 'image/jpeg'
+            return bytes(covr), mime
+    except Exception as e:
+        print(f"[-] Notice extracting artwork from {file_path}: {e}")
+
+    return None, None
+
+def refresh_all_tracks_metadata():
+    """Scans existing database tracks and updates metadata/artwork flags if missing"""
+    try:
+        tracks = db_manager.get_all_tracks()
+        for t in tracks:
+            fp = t.get("file_path", "")
+            if fp and os.path.exists(fp):
+                meta = extract_audio_metadata(fp)
+                # Update if artist was Unknown Artist or title was raw filename
+                with db_manager.get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                    UPDATE tracks SET title = ?, artist = ?, album = ?
+                    WHERE id = ?
+                    """, (meta["title"], meta["artist"], meta["album"], t["id"]))
+                    conn.commit()
+    except Exception as e:
+        print(f"[-] Notice refreshing track metadata: {e}")
+
 def resolve_file_path(file_path):
     """Resolves absolute or relative file paths in project directory"""
     if not file_path:
@@ -97,10 +217,12 @@ def process_single_file(file_path):
     # 6. 3-Band Waveform Peak extraction
     waveform_peaks = dsp.generate_3band_waveform_peaks(y, sr=sr, num_points=600)
 
-    # Metadata extraction fallback
-    title = os.path.splitext(file_name)[0]
-    artist = "Unknown Artist"
-    album = ""
+    # 7. Real Metadata Extraction from audio file
+    meta = extract_audio_metadata(file_path)
+    title = meta["title"]
+    artist = meta["artist"]
+    album = meta["album"]
+    has_artwork = meta["has_artwork"]
 
     analysis_dict = {
         "bpm": bpm,
@@ -112,12 +234,12 @@ def process_single_file(file_path):
         "is_variable_bpm": is_variable_bpm
     }
 
-    # 7. Save results to SQLite Database
+    # 8. Save results to SQLite Database
     track_id = db_manager.upsert_track_analysis(
         file_path, file_name, file_size, duration_secs, title, artist, album, analysis_dict, cues, waveform_peaks=waveform_peaks
     )
 
-    # 8. Write ID3 Tags to File
+    # 9. Write ID3 Tags to File
     write_id3_tags(file_path, bpm, camelot_key, detected_key, energy_score)
 
     processing_time = time.time() - t0
@@ -128,6 +250,8 @@ def process_single_file(file_path):
         "file_name": file_name,
         "title": title,
         "artist": artist,
+        "album": album,
+        "has_artwork": has_artwork,
         "duration_secs": duration_secs,
         "bpm": bpm,
         "bpm_confidence": bpm_confidence,
@@ -219,8 +343,41 @@ class AudioHarmonixHTTPHandler(BaseHTTPRequestHandler):
                 bpm_max=bpm_max,
                 energy_min=energy_min
             )
+
+            # Attach has_artwork flag to tracks
+            for t in tracks:
+                fp = t.get("file_path", "")
+                t["has_artwork"] = False
+                if fp and os.path.exists(fp):
+                    try:
+                        meta = extract_audio_metadata(fp)
+                        t["has_artwork"] = meta["has_artwork"]
+                        t["title"] = meta["title"]
+                        t["artist"] = meta["artist"]
+                        t["album"] = meta["album"]
+                    except Exception:
+                        pass
+
             self._set_headers(200)
             self.wfile.write(json.dumps({"status": "ok", "tracks": tracks}).encode("utf-8"))
+
+        elif path == "/api/artwork":
+            track_id = query.get("id", [""])[0]
+            track = db_manager.get_track_by_id(track_id) if track_id else None
+            if track and os.path.exists(track.get("file_path", "")):
+                img_data, mime = get_track_artwork(track["file_path"])
+                if img_data:
+                    self.send_response(200)
+                    self.send_header("Content-Type", mime)
+                    self.send_header("Content-Length", str(len(img_data)))
+                    self.send_header("Cache-Control", "public, max-age=86400")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(img_data)
+                    return
+
+            self._set_headers(404, "text/plain")
+            self.wfile.write(b"Artwork not found")
 
         elif path == "/api/batch_status":
             self._set_headers(200)
@@ -231,8 +388,8 @@ class AudioHarmonixHTTPHandler(BaseHTTPRequestHandler):
             self._set_headers(200)
             self.wfile.write(json.dumps({"status": "ok", "files": files}).encode("utf-8"))
 
-        elif path.startswith("/ui/"):
-            rel_path = path[4:] if path.startswith("/ui/") else path
+        elif path.startswith("/ui/") or path.startswith("/src/") or path.endswith(".css") or path.endswith(".js") or path.endswith(".png") or path.endswith(".svg") or path.endswith(".jpg") or path.endswith(".jpeg"):
+            rel_path = path[4:] if path.startswith("/ui/") else path.lstrip("/")
             full_path = os.path.join(BASE_DIR, "ui", rel_path)
             if not os.path.exists(full_path) or os.path.isdir(full_path):
                 full_path = os.path.join(BASE_DIR, "ui", "index.html")
@@ -246,6 +403,8 @@ class AudioHarmonixHTTPHandler(BaseHTTPRequestHandler):
                 ctype = "image/png"
             elif full_path.endswith(".svg"):
                 ctype = "image/svg+xml"
+            elif full_path.endswith(".jpg") or full_path.endswith(".jpeg"):
+                ctype = "image/jpeg"
 
             try:
                 with open(full_path, "rb") as f:
@@ -348,24 +507,19 @@ class AudioHarmonixHTTPHandler(BaseHTTPRequestHandler):
         elif self.path == "/api/upload_and_analyze":
             file_name = data.get("file_name", "upload.mp3")
             b64_content = data.get("base64_data", "")
-            if not b64_content:
-                self._set_headers(400)
-                self.wfile.write(json.dumps({"error": "No base64_data provided"}).encode("utf-8"))
-                return
+            if "," in b64_content:
+                b64_content = b64_content.split(",", 1)[1]
+
+            raw_bytes = base64.b64decode(b64_content)
+            upload_dir = os.path.join(BASE_DIR, "sample_tracks")
+            os.makedirs(upload_dir, exist_ok=True)
+            saved_path = os.path.join(upload_dir, file_name)
+
+            with open(saved_path, "wb") as f:
+                f.write(raw_bytes)
 
             try:
-                dest_dir = os.path.join(BASE_DIR, "sample_tracks")
-                os.makedirs(dest_dir, exist_ok=True)
-                dest_path = os.path.join(dest_dir, file_name)
-
-                if "," in b64_content:
-                    b64_content = b64_content.split(",", 1)[1]
-
-                audio_bytes = base64.b64decode(b64_content)
-                with open(dest_path, "wb") as f:
-                    f.write(audio_bytes)
-
-                res = process_single_file(dest_path)
+                res = process_single_file(saved_path)
                 self._set_headers(200)
                 self.wfile.write(json.dumps({"status": "ok", "result": res}).encode("utf-8"))
             except Exception as e:
@@ -377,14 +531,9 @@ class AudioHarmonixHTTPHandler(BaseHTTPRequestHandler):
             if not file_paths:
                 file_paths = scan_available_audio_files()
 
-            if not file_paths:
-                self._set_headers(400)
-                self.wfile.write(json.dumps({"error": "No audio files found to analyze"}).encode("utf-8"))
-                return
-
             threading.Thread(target=run_batch_analysis, args=(file_paths,), daemon=True).start()
             self._set_headers(200)
-            self.wfile.write(json.dumps({"status": "ok", "message": f"Started batch analysis for {len(file_paths)} tracks", "total": len(file_paths)}).encode("utf-8"))
+            self.wfile.write(json.dumps({"status": "ok", "message": "Batch processing started", "total": len(file_paths)}).encode("utf-8"))
 
         elif self.path == "/api/delete_track":
             track_id = data.get("track_id", "")
@@ -395,7 +544,7 @@ class AudioHarmonixHTTPHandler(BaseHTTPRequestHandler):
 
             db_manager.delete_track(track_id)
             self._set_headers(200)
-            self.wfile.write(json.dumps({"status": "ok", "message": "Track deleted successfully"}).encode("utf-8"))
+            self.wfile.write(json.dumps({"status": "ok", "message": f"Track {track_id} deleted successfully"}).encode("utf-8"))
 
         elif self.path == "/api/export_rekordbox":
             out_xml = data.get("output_path", os.path.join(BASE_DIR, "rekordbox.xml"))
@@ -407,9 +556,14 @@ class AudioHarmonixHTTPHandler(BaseHTTPRequestHandler):
                     "analysis": t,
                     "cues": t.get("cues", [])
                 })
+            success, msg = export_rekordbox_xml(out_xml, tracks_data)
+            self._set_headers(200 if success else 500)
+            self.wfile.write(json.dumps({"status": "ok" if success else "error", "message": msg}).encode("utf-8"))
+
         elif self.path == "/api/save_user_cues":
             track_id = data.get("track_id", "")
             cues = data.get("cues", [])
+            teach_ai = bool(data.get("teach_ai", False))
             if not track_id or not isinstance(cues, list):
                 self._set_headers(400)
                 self.wfile.write(json.dumps({"error": "Invalid request: track_id and cues required"}).encode("utf-8"))
@@ -436,16 +590,17 @@ class AudioHarmonixHTTPHandler(BaseHTTPRequestHandler):
                 except Exception:
                     pass
 
-            # Active Learning Online Fine-Tuning in background
-            if track and os.path.exists(track.get("file_path", "")):
+            # Active Learning Online Fine-Tuning in background only if teach_ai is True
+            if teach_ai and track and os.path.exists(track.get("file_path", "")):
                 threading.Thread(target=ml.adapt_structure_model, args=(track["file_path"], cues), daemon=True).start()
 
             self._set_headers(200)
             self.wfile.write(json.dumps({
                 "status": "ok",
-                "message": "HotCues e BPM salvos com sucesso e IA adaptada ao seu estilo!",
+                "message": "HotCues e BPM salvos com sucesso e IA adaptada ao seu estilo!" if teach_ai else "HotCues e BPM salvos com sucesso no banco de dados!",
                 "cues": cues,
-                "bpm": track.get("bpm") if track else bpm_val
+                "bpm": track.get("bpm") if track else bpm_val,
+                "taught_ai": teach_ai
             }).encode("utf-8"))
 
         else:
@@ -453,6 +608,7 @@ class AudioHarmonixHTTPHandler(BaseHTTPRequestHandler):
             self.wfile.write(b"Endpoint not found")
 
 def start_server(port=8888):
+    refresh_all_tracks_metadata()
     server = ThreadingHTTPServer(("127.0.0.1", port), AudioHarmonixHTTPHandler)
     print(f"AudioHarmonix Backend running at http://127.0.0.1:{port}")
     server.serve_forever()
