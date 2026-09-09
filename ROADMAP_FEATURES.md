@@ -47,24 +47,25 @@ Auxiliar o DJ na tomada de decisão rápida durante a performance, sugerindo aut
 
 ### 📋 Metas e Tarefas a Cumprir
 1. **Implementação do Módulo `HarmonicMixer` no Backend**:
-   - [ ] Criar classe `HarmonicMixer` em `crates/dsp_core/` encapsulando as regras harmônicas.
-   - [ ] **Mix Harmônico Perfeito (Same Key / Relative)**:
+   - [x] Criar classe `HarmonicMixer` em `crates/dsp_core/` encapsulando as regras harmônicas.
+   - [x] **Mix Harmônico Perfeito (Same Key / Relative)**:
      - Mesma chave ($8A \rightarrow 8A$) com compatibilidade $1.0$.
      - Chave Relativa ($8A \leftrightarrow 8B$) com compatibilidade $1.0$.
-   - [ ] **Mix Suave (Subdominante / Dominante)**:
+   - [x] **Mix Suave (Subdominante / Dominante)**:
      - $+1$ ou $-1$ hora no relógio ($8A \rightarrow 9A$ ou $8A \rightarrow 7A$) com compatibilidade $0.9$.
-   - [ ] **Energy Boost (+1 e +2 Camelot)**:
+   - [x] **Energy Boost (+1 e +2 Camelot)**:
      - Transições para elevar a energia tonal da pista ($8A \rightarrow 10A$).
-   - [ ] **Semitone Jump (+1 Semitom)**:
+   - [x] **Semitone Jump (+1 Semitom)**:
      - Modulação de impacto para clímax ($8A \rightarrow 3A$ — Lá menor para Si bemol menor).
-   - [ ] **Diagonal Mix**:
+   - [x] **Diagonal Mix**:
      - Mudança de tom e modo simultâneos ($8A \rightarrow 9B$).
 2. **Construção da API e Componente de Interface**:
-   - [ ] Endpoint `/api/recommendations?key=8A&bpm=124&energy=7` retornando ranking de faixas da biblioteca.
-   - [ ] Painel lateral na UI *"Smart Next Track"* com badges coloridas indicando o tipo de transição (*Harmonic, Energy Boost, Energy Drop*).
+   - [x] Endpoint `/api/recommendations?track_id=X&limit=8` retornando ranking de faixas da biblioteca com pitch % e $\Delta$Energy.
+   - [x] Painel no Workstation *"Smart Next Track"* com subtabs *Smart Mix* e *Camelot Keys*, badges dinâmicas (*Harmonic, Energy Lift, Climax, Relative*) e pontuação $0-100\%$.
 
-### 🏁 Critérios de Aceitação da Fase 2
-* O DJ seleciona qualquer faixa no Deck e a UI exibe instantaneamente o Top 5 de faixas mais indicadas da biblioteca ordenadas por compatibilidade de tom e proximidade de BPM ($\pm 4\%$).
+### 🏁 Critérios de Aceitação da Fase 2 (100% Concluída)
+* O DJ seleciona qualquer faixa no Deck e a UI exibe instantaneamente as faixas mais indicadas da biblioteca ordenadas por compatibilidade de tom, proximidade de BPM e fluxo de energia.
+* 13 novos testes unitários adicionados em `tests/test_harmonic_mixer.py` (Total do projeto: 43/43 PASSANDO).
 
 ---
 

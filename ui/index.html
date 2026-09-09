@@ -343,28 +343,40 @@
           <!-- Resizer between HotCue and Harmonic Mixing (True Two-Way Splitter - Section 5) -->
           <div id="resizer-widgets" class="layout-resizer-v inner" title="Drag left/right to adjust panel balance"></div>
 
-          <!-- Widget 2: Harmonic Mixing Matrix (Horizontal Filter Bar at TOP + Matching Tracks) -->
+          <!-- Widget 2: Smart Harmonic Mixing & Next Track Recommender -->
           <div id="harmonic-widget" class="widget-card harmonic-widget">
             <div class="widget-header">
               <div class="widget-title">
-                <span>Harmonic Mixing</span>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+                <span>Smart Next Track</span>
               </div>
-              <div id="harmonic-match-count" class="match-count-badge">0 Matches Found</div>
-            </div>
-
-            <!-- Horizontal Camelot Filter at TOP (Section 7 Requirement) -->
-            <div class="harmonic-filter-bar-top">
-              <div class="filter-top-label">
-                <span>HARMONIC FILTER:</span>
-                <span id="active-filter-label" class="active-filter-badge">11A</span>
-              </div>
-              <div id="harmonic-filter-pills" class="harmonic-pills-horizontal">
-                <!-- Dynamically populated: e.g. for 7A -> 6A, 7A, 8A, 7B -->
+              <div class="widget-header-controls">
+                <div class="widget-tab-group">
+                  <button id="tab-recs-smart" class="btn-widget-subtab active" title="AI-Ranked Smart Recommendations">Smart Mix</button>
+                  <button id="tab-recs-wheel" class="btn-widget-subtab" title="Filter by Camelot Key Steps">Camelot Keys</button>
+                </div>
+                <div id="harmonic-match-count" class="match-count-badge">0 Matches</div>
               </div>
             </div>
 
-            <!-- Harmonic Matching Tracks from Library -->
-            <div class="harmonic-tracks-column">
+            <!-- Subtab 1: Smart Next Track Recommendations View -->
+            <div id="smart-recs-view" class="harmonic-tracks-column">
+              <div id="smart-recs-list" class="smart-recs-list">
+                <span class="no-matches-text">Select a track to view intelligent next-track recommendations.</span>
+              </div>
+            </div>
+
+            <!-- Subtab 2: Horizontal Camelot Filter at TOP + Matching Tracks -->
+            <div id="camelot-keys-view" class="harmonic-tracks-column hidden">
+              <div class="harmonic-filter-bar-top">
+                <div class="filter-top-label">
+                  <span>KEY FILTER:</span>
+                  <span id="active-filter-label" class="active-filter-badge">11A</span>
+                </div>
+                <div id="harmonic-filter-pills" class="harmonic-pills-horizontal">
+                  <!-- Dynamically populated: e.g. for 7A -> 6A, 7A, 8A, 7B -->
+                </div>
+              </div>
               <div id="harmonic-matches-list" class="harmonic-matches-list">
                 <span class="no-matches-text">Select a track to view harmonic mix recommendations.</span>
               </div>

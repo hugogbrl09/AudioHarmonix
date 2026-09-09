@@ -28,6 +28,7 @@ import dsp
 import ml
 from tagger import write_id3_tags, export_rekordbox_xml, export_traktor_nml
 from db import DatabaseManager
+from harmonic_mixer import HarmonicMixer
 
 db_manager = DatabaseManager()
 ml_key_detector = ml.KeyDetector()
@@ -378,6 +379,60 @@ class AudioHarmonixHTTPHandler(BaseHTTPRequestHandler):
 
             self._set_headers(404, "text/plain")
             self.wfile.write(b"Artwork not found")
+
+        elif path == "/api/recommendations":
+            track_id = query.get("track_id", [""])[0]
+            req_key = query.get("key", [""])[0]
+            req_bpm = float(query.get("bpm", [120.0])[0])
+            req_energy = float(query.get("energy", [5.0])[0])
+            limit = int(query.get("limit", [6])[0])
+
+            source_track = None
+            if track_id:
+                source_track = db_manager.get_track_by_id(track_id)
+
+            if not source_track and req_key:
+                source_track = {
+                    "id": "query_source",
+                    "camelot_key": req_key,
+                    "bpm": req_bpm,
+                    "energy_score": req_energy,
+                    "title": "Selected Profile"
+                }
+
+            if not source_track:
+                self._set_headers(400)
+                self.wfile.write(json.dumps({"status": "error", "error": "track_id or key parameter required"}).encode("utf-8"))
+                return
+
+            all_tracks = db_manager.get_all_tracks()
+            for t in all_tracks:
+                fp = t.get("file_path", "")
+                t["has_artwork"] = False
+                if fp and os.path.exists(fp):
+                    try:
+                        meta = extract_audio_metadata(fp)
+                        t["has_artwork"] = meta["has_artwork"]
+                        t["title"] = meta["title"]
+                        t["artist"] = meta["artist"]
+                        t["album"] = meta["album"]
+                    except Exception:
+                        pass
+
+            recommendations = HarmonicMixer.rank_candidates(source_track, all_tracks, limit=limit)
+
+            self._set_headers(200)
+            self.wfile.write(json.dumps({
+                "status": "ok",
+                "source_track": {
+                    "id": source_track.get("id"),
+                    "title": source_track.get("title"),
+                    "camelot_key": source_track.get("camelot_key"),
+                    "bpm": source_track.get("bpm"),
+                    "energy_score": source_track.get("energy_score")
+                },
+                "recommendations": recommendations
+            }).encode("utf-8"))
 
         elif path == "/api/batch_status":
             self._set_headers(200)

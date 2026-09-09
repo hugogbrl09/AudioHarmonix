@@ -111,6 +111,11 @@ const harmonicMatchesList = document.getElementById("harmonic-matches-list");
 const activeFilterLabel = document.getElementById("active-filter-label");
 const harmonicFilterPills = document.getElementById("harmonic-filter-pills");
 const sidebarCamelotWheel = document.getElementById("sidebar-camelot-wheel");
+const tabRecsSmart = document.getElementById("tab-recs-smart");
+const tabRecsWheel = document.getElementById("tab-recs-wheel");
+const smartRecsView = document.getElementById("smart-recs-view");
+const camelotKeysView = document.getElementById("camelot-keys-view");
+const smartRecsList = document.getElementById("smart-recs-list");
 
 // Bottom Persistent Player Bar
 const playerArtDisc = document.getElementById("player-art-disc");
@@ -469,6 +474,7 @@ function selectTrack(track) {
   activeHarmonicFilter = track.camelot_key || '11A';
   renderHarmonicFilterButtons(track);
   updateHarmonicMatchesForFilter(activeHarmonicFilter);
+  loadSmartRecommendations(track);
   renderCircularCamelotWheel(sidebarCamelotWheel, track, (k) => setHarmonicFilter(k));
 
   if (currentAudio) {
@@ -666,6 +672,117 @@ function updateHarmonicMatchesForFilter(filterKey) {
     });
 
     harmonicMatchesList.appendChild(item);
+  });
+}
+
+function hexToRgb(hex) {
+  if (!hex || !hex.startsWith("#")) return "56, 189, 248";
+  const num = parseInt(hex.slice(1), 16);
+  if (isNaN(num)) return "56, 189, 248";
+  return `${(num >> 16) & 255}, ${(num >> 8) & 255}, ${num & 255}`;
+}
+
+async function loadSmartRecommendations(track) {
+  if (!smartRecsList) return;
+  if (!track) {
+    smartRecsList.innerHTML = `<span class="no-matches-text">Select a track to view intelligent next-track recommendations.</span>`;
+    return;
+  }
+
+  smartRecsList.innerHTML = `<span class="no-matches-text" style="padding: 20px; text-align:center;">Finding best harmonic & tempo matches...</span>`;
+
+  try {
+    const res = await fetch(`${API_BASE}/api/recommendations?track_id=${track.id}&limit=8`);
+    const data = await res.json();
+
+    if (data.status === "ok" && data.recommendations) {
+      const recs = data.recommendations;
+      if (harmonicMatchCount && tabRecsSmart && tabRecsSmart.classList.contains("active")) {
+        harmonicMatchCount.textContent = `${recs.length} Recommendations`;
+      }
+
+      if (recs.length === 0) {
+        smartRecsList.innerHTML = `<span class="no-matches-text">No mix recommendations found. Import more tracks to expand your setlist!</span>`;
+        return;
+      }
+
+      smartRecsList.innerHTML = "";
+      recs.forEach(r => {
+        const t = r.track;
+        const h = r.harmonic || {};
+        const tempo = r.tempo || {};
+        const energy = r.energy || {};
+        const score = r.match_score || 0;
+
+        let scoreClass = "low";
+        if (score >= 90) scoreClass = "high";
+        else if (score >= 75) scoreClass = "mid";
+
+        const initials = getInitials(t.title || t.file_name);
+        const artUrl = `${API_BASE}/api/artwork?id=${t.id}`;
+        const keyClass = (t.camelot_key || '8a').toLowerCase();
+
+        const artworkHtml = t.has_artwork
+          ? `<div class="smart-rec-artwork"><img src="${artUrl}" class="artwork-img" alt="" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" /><span class="artwork-initials" style="display:none;">${initials}</span></div>`
+          : `<div class="smart-rec-artwork"><span class="artwork-initials">${initials}</span></div>`;
+
+        const pillColor = h.color || "#38bdf8";
+
+        const item = document.createElement("div");
+        item.className = "smart-rec-item";
+        item.title = `${t.title || t.file_name}\n${h.description || ''}\nTarget BPM: ${Math.round(t.bpm || 120)} (${tempo.pitch_display || '0.0%'})`;
+
+        item.innerHTML = `
+          <div class="smart-rec-left">
+            ${artworkHtml}
+            <div class="smart-rec-text">
+              <div class="smart-rec-title" title="${escapeHtml(t.title || t.file_name)}">${escapeHtml(t.title || t.file_name)}</div>
+              <div class="smart-rec-artist">${escapeHtml(t.artist || 'Unknown Artist')}</div>
+              <div class="smart-rec-pills">
+                <span class="smart-rec-pill" style="background: rgba(${hexToRgb(pillColor)}, 0.15); color: ${pillColor}; border: 1px solid ${pillColor};">
+                  ${escapeHtml(h.label || 'Match')}
+                </span>
+                <span class="smart-rec-pitch">${tempo.pitch_display || 'Exact BPM'}</span>
+              </div>
+            </div>
+          </div>
+          <div class="smart-rec-right">
+            <div class="smart-rec-score-wrap">
+              <span class="smart-rec-score-num ${scoreClass}">${score}%</span>
+              <span class="smart-rec-key-badge key-${keyClass}">${t.camelot_key || '---'}</span>
+            </div>
+            <span class="smart-rec-energy-delta">${energy.label || ''}</span>
+          </div>
+        `;
+
+        item.addEventListener("click", () => {
+          selectTrack(t);
+        });
+
+        smartRecsList.appendChild(item);
+      });
+    }
+  } catch (err) {
+    console.error("Error loading smart recommendations:", err);
+  }
+}
+
+// Subtab event listeners for Smart Mix vs Camelot Keys
+if (tabRecsSmart && tabRecsWheel) {
+  tabRecsSmart.addEventListener("click", () => {
+    tabRecsSmart.classList.add("active");
+    tabRecsWheel.classList.remove("active");
+    if (smartRecsView) smartRecsView.classList.remove("hidden");
+    if (camelotKeysView) camelotKeysView.classList.add("hidden");
+    if (selectedTrack) loadSmartRecommendations(selectedTrack);
+  });
+
+  tabRecsWheel.addEventListener("click", () => {
+    tabRecsWheel.classList.add("active");
+    tabRecsSmart.classList.remove("active");
+    if (camelotKeysView) camelotKeysView.classList.remove("hidden");
+    if (smartRecsView) smartRecsView.classList.add("hidden");
+    if (selectedTrack) updateHarmonicMatchesForFilter(activeHarmonicFilter);
   });
 }
 
