@@ -639,7 +639,9 @@ function updateHarmonicMatchesForFilter(filterKey) {
   harmonicMatchesList.innerHTML = "";
 
   const matches = tracksData.filter(t => (!selectedTrack || t.id !== selectedTrack.id) && t.camelot_key === filterKey);
-  if (harmonicMatchCount) harmonicMatchCount.textContent = `${matches.length} Matches Found (${filterKey})`;
+  if (harmonicMatchCount && tabRecsWheel && tabRecsWheel.classList.contains("active")) {
+    harmonicMatchCount.textContent = `${matches.length} Matches (${filterKey})`;
+  }
 
   if (matches.length === 0) {
     harmonicMatchesList.innerHTML = `<span class="no-matches-text">No compatible tracks found in library for key ${filterKey}.</span>`;
