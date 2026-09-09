@@ -60,6 +60,7 @@ desktop.ini
 .agent/
 .agents/
 .impeccable/
+.playwright-mcp/
 prompt*.md
 plano_audioharmonix.md
 melhorar_modelo.md
