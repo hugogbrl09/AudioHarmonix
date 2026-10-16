@@ -291,6 +291,35 @@ class HarmonicMixer:
         }
 
     @classmethod
+    def evaluate_transition(cls, source_track: Dict[str, Any], target_track: Dict[str, Any]) -> Dict[str, Any]:
+        """Evaluates full transition compatibility (harmonic, tempo, energy) between two track dicts."""
+        src_key = source_track.get("camelot_key", "")
+        src_bpm = float(source_track.get("bpm") or 120.0)
+        src_energy = float(source_track.get("energy_score") or 5.0)
+
+        cand_key = target_track.get("camelot_key", "")
+        cand_bpm = float(target_track.get("bpm") or 120.0)
+        cand_energy = float(target_track.get("energy_score") or 5.0)
+
+        harm_res = cls.evaluate_harmonic_transition(src_key, cand_key)
+        tempo_res = cls.evaluate_tempo_compatibility(src_bpm, cand_bpm)
+        energy_res = cls.evaluate_energy_progression(src_energy, cand_energy)
+
+        composite_score = (
+            (0.55 * harm_res["score"]) +
+            (0.35 * tempo_res["score"]) +
+            (0.10 * energy_res["score"])
+        ) * 100.0
+
+        return {
+            "match_score": round(composite_score, 1),
+            "harmonic": harm_res,
+            "tempo": tempo_res,
+            "energy": energy_res,
+            "recommended_reason": f"{harm_res['label']} • {tempo_res['pitch_display']}"
+        }
+
+    @classmethod
     def rank_candidates(cls, source_track: Dict[str, Any], library_tracks: List[Dict[str, Any]], limit: int = 6) -> List[Dict[str, Any]]:
         """
         Ranks library tracks by mixability score relative to source_track.

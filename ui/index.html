@@ -59,9 +59,14 @@
           <span>Analyze All</span>
         </button>
 
-        <button id="btn-export-xml" class="btn btn-header">
+        <button id="btn-set-planner" class="btn btn-header" title="Smart Set Planner & Energy Curve Optimizer">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          <span>Set Planner</span>
+        </button>
+
+        <button id="btn-export-xml" class="btn btn-header" title="Export to Rekordbox XML, Serato Crate or Traktor NML">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-          <span>Export XML</span>
+          <span>Export DJ</span>
         </button>
       </div>
     </header>
@@ -605,20 +610,123 @@
     </div>
   </div>
 
-  <!-- Export Rekordbox Modal -->
+  <!-- Multi-Platform DJ Export Modal -->
   <div id="modal-export" class="modal-backdrop hidden">
-    <div class="modal-card">
+    <div class="modal-card modal-large">
       <div class="modal-header">
-        <h3>Export Rekordbox XML</h3>
+        <h3>Multi-Platform DJ Software Export</h3>
         <button id="btn-close-export-modal" class="btn-close" aria-label="Close Export Modal">&times;</button>
       </div>
       <div class="modal-body">
-        <p style="font-size:13px; color:var(--text-muted);">Export all analyzed tracks, BPM grids, Camelot keys, and HotCue points to standard Rekordbox XML format.</p>
-        <label style="display:block; margin-top:12px; margin-bottom:4px; font-weight:600; font-size:12px;">Destination File Path:</label>
+        <p style="font-size:13px; color:var(--text-muted); margin-bottom:12px;">Export analyzed tracks, BPM beatgrids, Camelot harmonic keys, and color-coded 8-pad HotCue markers to your DJ software:</p>
+
+        <div class="export-format-grid" id="export-format-grid">
+          <div class="export-format-card active" data-format="rekordbox" data-default-path="rekordbox.xml">
+            <div class="export-format-header">
+              <span class="export-format-title">Pioneer Rekordbox</span>
+              <span class="export-format-ext">.XML</span>
+            </div>
+            <p class="export-format-desc">Full DJ_PLAYLISTS XML with BeatGrid TEMPO, official RGB section-colored HotCues (Pads A-H), and Camelot Smart Crates.</p>
+          </div>
+
+          <div class="export-format-card" data-format="serato" data-default-path="AudioHarmonix.crate">
+            <div class="export-format-header">
+              <span class="export-format-title">Serato DJ Pro</span>
+              <span class="export-format-ext">.CRATE + ID3</span>
+            </div>
+            <p class="export-format-desc">Binary UTF-16BE Subcrate plus direct GEOB:Serato Markers2 8-pad RGB HotCue &amp; Camelot Key ID3v2.4 frame injection.</p>
+          </div>
+
+          <div class="export-format-card" data-format="traktor" data-default-path="collection.nml">
+            <div class="export-format-header">
+              <span class="export-format-title">NI Traktor Pro 3/4</span>
+              <span class="export-format-ext">.NML</span>
+            </div>
+            <p class="export-format-desc">Native Instruments NML v19 collection with MUSICAL_KEY, TEMPO BPM, and millisecond-accurate CUE_V2 HotCue markers.</p>
+          </div>
+        </div>
+
+        <label style="display:block; margin-top:14px; margin-bottom:6px; font-weight:600; font-size:12px; color:var(--text-secondary);">Destination File Path:</label>
         <input type="text" id="export-path-input" value="rekordbox.xml" class="input-text-dark">
       </div>
       <div class="modal-footer">
         <button id="btn-confirm-export" class="btn btn-primary">Confirm Export</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Intelligent Set Planner & Energy Curve Optimizer Modal -->
+  <div id="modal-set-planner" class="modal-backdrop hidden">
+    <div class="modal-card modal-xl">
+      <div class="modal-header">
+        <h3 style="display:flex; align-items:center; gap:8px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          Intelligent Set Planner &amp; Energy Curve Optimizer
+        </h3>
+        <button id="btn-close-set-planner" class="btn-close" aria-label="Close Set Planner Modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="set-planner-controls">
+          <div class="planner-control-group">
+            <label for="planner-profile-select">Narrative Energy Profile</label>
+            <select id="planner-profile-select" class="select-dark">
+              <option value="warmup_peak_reset">Warmup -> Peak -> Reset (Club Arc)</option>
+              <option value="festival_peak">Festival Mainstage Peak Hour</option>
+              <option value="deep_hypnotic">Deep Hypnotic Flow</option>
+              <option value="progressive_journey">Progressive Ascending Journey</option>
+            </select>
+          </div>
+          <div class="planner-control-group">
+            <label for="planner-start-track">Opening Anchor Track</label>
+            <select id="planner-start-track" class="select-dark">
+              <option value="">Auto-Select Optimal Opener</option>
+            </select>
+          </div>
+          <div class="planner-control-actions">
+            <button id="btn-run-set-planner" class="btn btn-primary">Optimize Set Route</button>
+            <button id="btn-export-planned-set" class="btn btn-secondary">Export Setlist</button>
+          </div>
+        </div>
+
+        <div class="set-planner-kpis" id="set-planner-kpis">
+          <div class="planner-kpi-card">
+            <span class="kpi-label">AVG TRANSITION SCORE</span>
+            <span class="kpi-val" id="planner-kpi-score">--%</span>
+          </div>
+          <div class="planner-kpi-card">
+            <span class="kpi-label">HARMONIC COMPATIBILITY</span>
+            <span class="kpi-val" id="planner-kpi-harmonic">--%</span>
+          </div>
+          <div class="planner-kpi-card">
+            <span class="kpi-label">TOTAL SET DURATION</span>
+            <span class="kpi-val" id="planner-kpi-duration">--m</span>
+          </div>
+          <div class="planner-kpi-card">
+            <span class="kpi-label">BPM SPAN</span>
+            <span class="kpi-val" id="planner-kpi-bpm">--</span>
+          </div>
+        </div>
+
+        <div class="energy-curve-chart-box">
+          <div class="chart-header-row">
+            <span class="chart-title">ENERGY CURVE TRAJECTORY (TARGET VS ACTUAL ROUTE)</span>
+            <div class="chart-legend">
+              <span class="legend-item"><span class="legend-dot target"></span>Target Envelope</span>
+              <span class="legend-item"><span class="legend-dot actual"></span>Actual Track Energy</span>
+            </div>
+          </div>
+          <div id="set-planner-svg-container" class="set-planner-svg-container">
+            <!-- Rendered dynamically via SVG -->
+          </div>
+        </div>
+
+        <div class="setlist-timeline-header">
+          <span>OPTIMIZED HARMONIC &amp; TEMPO SEQUENCE</span>
+          <span id="setlist-track-count-label">0 tracks</span>
+        </div>
+        <div id="set-planner-timeline" class="setlist-timeline">
+          <!-- Populated dynamically -->
+        </div>
       </div>
     </div>
   </div>

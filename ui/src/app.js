@@ -1958,26 +1958,244 @@ function startBatchPolling() {
   }, 400);
 }
 
-// Rekordbox Export
+// Multi-Platform DJ Software Export (Rekordbox XML, Serato Crate/ID3, Traktor NML)
+let selectedExportFormat = "rekordbox";
+const exportFormatGrid = document.getElementById("export-format-grid");
+
+if (exportFormatGrid) {
+  exportFormatGrid.querySelectorAll(".export-format-card").forEach(card => {
+    card.addEventListener("click", () => {
+      exportFormatGrid.querySelectorAll(".export-format-card").forEach(c => c.classList.remove("active"));
+      card.classList.add("active");
+      selectedExportFormat = card.dataset.format || "rekordbox";
+      if (exportPathInput && card.dataset.defaultPath) {
+        exportPathInput.value = card.dataset.defaultPath;
+      }
+    });
+  });
+}
+
 if (btnExportXml) btnExportXml.addEventListener("click", () => modalExport.classList.remove("hidden"));
 if (btnCloseExportModal) btnCloseExportModal.addEventListener("click", () => modalExport.classList.add("hidden"));
 if (btnConfirmExport) {
   btnConfirmExport.addEventListener("click", async () => {
     const outPath = exportPathInput ? exportPathInput.value.trim() : "rekordbox.xml";
+    const origText = btnConfirmExport.textContent;
+    btnConfirmExport.textContent = "Exporting...";
+    btnConfirmExport.disabled = true;
     try {
-      const res = await fetch(`${API_BASE}/api/export_rekordbox`, {
+      const res = await fetch(`${API_BASE}/api/export_dj`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ output_path: outPath })
+        body: JSON.stringify({
+          format: selectedExportFormat,
+          output_path: outPath,
+          write_tags: true
+        })
       });
       const data = await res.json();
       if (data.status === "ok") {
-        showToast(data.message, "success");
+        showToast(data.message, "success", 3200);
         modalExport.classList.add("hidden");
+      } else {
+        showToast(`Export error: ${data.error || "Unknown"}`, "error");
       }
     } catch (err) {
       showToast(`Export error: ${err.message}`, "error");
+    } finally {
+      btnConfirmExport.textContent = origText;
+      btnConfirmExport.disabled = false;
     }
+  });
+}
+
+// Intelligent Set Planner & Energy Curve Optimizer (Phase 4)
+const btnSetPlanner = document.getElementById("btn-set-planner");
+const modalSetPlanner = document.getElementById("modal-set-planner");
+const btnCloseSetPlanner = document.getElementById("btn-close-set-planner");
+const plannerProfileSelect = document.getElementById("planner-profile-select");
+const plannerStartTrackSelect = document.getElementById("planner-start-track");
+const btnRunSetPlanner = document.getElementById("btn-run-set-planner");
+const btnExportPlannedSet = document.getElementById("btn-export-planned-set");
+const setPlannerSvgContainer = document.getElementById("set-planner-svg-container");
+const setPlannerTimeline = document.getElementById("set-planner-timeline");
+const setlistTrackCountLabel = document.getElementById("setlist-track-count-label");
+const plannerKpiScore = document.getElementById("planner-kpi-score");
+const plannerKpiHarmonic = document.getElementById("planner-kpi-harmonic");
+const plannerKpiDuration = document.getElementById("planner-kpi-duration");
+const plannerKpiBpm = document.getElementById("planner-kpi-bpm");
+
+let currentPlannedSet = null;
+
+function populatePlannerStartTracks() {
+  if (!plannerStartTrackSelect) return;
+  const currentVal = plannerStartTrackSelect.value;
+  plannerStartTrackSelect.innerHTML = `<option value="">Auto-Select Optimal Opener</option>`;
+  tracksData.forEach(t => {
+    const opt = document.createElement("option");
+    opt.value = t.id;
+    opt.textContent = `[${t.camelot_key || "8A"} | ${Math.round(t.bpm || 120)} BPM] ${t.title || t.file_name}`;
+    plannerStartTrackSelect.appendChild(opt);
+  });
+  if (currentVal) plannerStartTrackSelect.value = currentVal;
+}
+
+function renderEnergyCurveSvg(plan) {
+  if (!setPlannerSvgContainer) return;
+  const setlist = (plan && plan.setlist) ? plan.setlist : [];
+  if (setlist.length === 0) {
+    setPlannerSvgContainer.innerHTML = `<div style="height:100%; display:flex; align-items:center; justify-content:center; color:#64748b; font-size:12px;">No tracks available to plot energy trajectory.</div>`;
+    return;
+  }
+
+  const W = 760;
+  const H = 124;
+  const padX = 28;
+  const padY = 18;
+  const plotW = W - padX * 2;
+  const plotH = H - padY * 2;
+
+  const xForIdx = (i) => setlist.length === 1 ? (W / 2) : (padX + (i / (setlist.length - 1)) * plotW);
+  const yForEnergy = (e) => padY + plotH - ((Math.max(1, Math.min(10, e)) - 1) / 9) * plotH;
+
+  const targetPts = setlist.map((s, i) => `${xForIdx(i).toFixed(1)},${yForEnergy(s.target_energy || 5).toFixed(1)}`).join(" ");
+  const actualPts = setlist.map((s, i) => `${xForIdx(i).toFixed(1)},${yForEnergy(s.actual_energy || 5).toFixed(1)}`).join(" ");
+  const areaPts = `${xForIdx(0).toFixed(1)},${(padY + plotH).toFixed(1)} ${actualPts} ${xForIdx(setlist.length - 1).toFixed(1)},${(padY + plotH).toFixed(1)}`;
+
+  let nodesMarkup = "";
+  setlist.forEach((s, i) => {
+    const cx = xForIdx(i).toFixed(1);
+    const cy = yForEnergy(s.actual_energy || 5).toFixed(1);
+    const ty = yForEnergy(s.target_energy || 5).toFixed(1);
+    nodesMarkup += `
+      <circle cx="${cx}" cy="${ty}" r="2.5" fill="#64748b" />
+      <circle cx="${cx}" cy="${cy}" r="4" fill="#090c12" stroke="#38bdf8" stroke-width="2" />
+      <text x="${cx}" y="${Math.max(11, parseFloat(cy) - 7)}" text-anchor="middle" fill="#e2e8f0" font-size="9.5" font-family="JetBrains Mono, monospace" font-weight="700">${s.camelot_key || ""}</text>
+    `;
+  });
+
+  setPlannerSvgContainer.innerHTML = `
+    <svg viewBox="0 0 ${W} ${H}" width="100%" height="100%" preserveAspectRatio="none">
+      <defs>
+        <linearGradient id="energyAreaGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.28"/>
+          <stop offset="100%" stop-color="#38bdf8" stop-opacity="0.02"/>
+        </linearGradient>
+      </defs>
+      <line x1="${padX}" y1="${yForEnergy(10).toFixed(1)}" x2="${W - padX}" y2="${yForEnergy(10).toFixed(1)}" stroke="rgba(255,255,255,0.05)" stroke-dasharray="3,3"/>
+      <line x1="${padX}" y1="${yForEnergy(5.5).toFixed(1)}" x2="${W - padX}" y2="${yForEnergy(5.5).toFixed(1)}" stroke="rgba(255,255,255,0.06)" stroke-dasharray="3,3"/>
+      <line x1="${padX}" y1="${yForEnergy(1).toFixed(1)}" x2="${W - padX}" y2="${yForEnergy(1).toFixed(1)}" stroke="rgba(255,255,255,0.05)" stroke-dasharray="3,3"/>
+      <polygon points="${areaPts}" fill="url(#energyAreaGrad)" />
+      <polyline fill="none" stroke="#64748b" stroke-width="1.5" stroke-dasharray="4,4" points="${targetPts}" />
+      <polyline fill="none" stroke="#38bdf8" stroke-width="2.2" points="${actualPts}" />
+      ${nodesMarkup}
+    </svg>
+  `;
+}
+
+function renderPlannedSetlist(plan) {
+  currentPlannedSet = plan;
+  const summary = (plan && plan.curve_summary) ? plan.curve_summary : {};
+  const setlist = (plan && plan.setlist) ? plan.setlist : [];
+
+  if (plannerKpiScore) plannerKpiScore.textContent = `${summary.avg_transition_score || 0}%`;
+  if (plannerKpiHarmonic) plannerKpiHarmonic.textContent = `${summary.harmonic_compatibility_pct || 0}%`;
+  if (plannerKpiDuration) plannerKpiDuration.textContent = `${summary.total_duration_mins || 0}m`;
+  if (plannerKpiBpm) {
+    const span = summary.bpm_range || [0, 0];
+    plannerKpiBpm.textContent = `${Math.round(span[0])} - ${Math.round(span[1])}`;
+  }
+  if (setlistTrackCountLabel) setlistTrackCountLabel.textContent = `${setlist.length} tracks`;
+
+  renderEnergyCurveSvg(plan);
+
+  if (!setPlannerTimeline) return;
+  setPlannerTimeline.innerHTML = "";
+
+  setlist.forEach((item) => {
+    const row = document.createElement("div");
+    row.className = "setlist-step-row";
+    const keyClass = getCamelotCssClass(item.camelot_key || "8A");
+    const transText = item.step === 1 ? "OPENER" : `${item.transition_label} (${Math.round(item.transition_score)}%)`;
+
+    row.innerHTML = `
+      <div class="setlist-step-left">
+        <div class="setlist-step-num">${item.step}</div>
+        <div class="setlist-step-meta">
+          <div class="setlist-step-title">${escapeHtml(item.title || "Untitled")}</div>
+          <div class="setlist-step-sub">${escapeHtml(item.artist || "Unknown Artist")} &bull; Target E${item.target_energy} / Actual E${item.actual_energy}</div>
+        </div>
+      </div>
+      <div class="setlist-step-right">
+        <span class="setlist-transition-pill">${escapeHtml(transText)}</span>
+        <span class="key-badge ${keyClass}">${escapeHtml(item.camelot_key || "8A")}</span>
+        <span style="font-family:var(--font-mono); font-size:11.5px; font-weight:700; color:#e2e8f0; min-width:54px; text-align:right;">${Math.round(item.bpm || 120)} BPM</span>
+      </div>
+    `;
+
+    row.addEventListener("click", () => {
+      const targetTrack = tracksData.find(t => t.id === item.track_id);
+      if (targetTrack) {
+        selectTrack(targetTrack);
+        modalSetPlanner.classList.add("hidden");
+      }
+    });
+
+    setPlannerTimeline.appendChild(row);
+  });
+}
+
+async function runSetPlannerOptimization() {
+  const profile = plannerProfileSelect ? plannerProfileSelect.value : "warmup_peak_reset";
+  const startId = (plannerStartTrackSelect && plannerStartTrackSelect.value) ? parseInt(plannerStartTrackSelect.value, 10) : null;
+
+  if (btnRunSetPlanner) {
+    btnRunSetPlanner.textContent = "Optimizing...";
+    btnRunSetPlanner.disabled = true;
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/api/plan_set`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        profile,
+        start_track_id: startId
+      })
+    });
+    const data = await res.json();
+    if (data.status === "ok" && data.plan) {
+      renderPlannedSetlist(data.plan);
+    } else {
+      showToast(`Set Planner error: ${data.error || "Unknown"}`, "error");
+    }
+  } catch (err) {
+    showToast(`Set Planner error: ${err.message}`, "error");
+  } finally {
+    if (btnRunSetPlanner) {
+      btnRunSetPlanner.textContent = "Optimize Set Route";
+      btnRunSetPlanner.disabled = false;
+    }
+  }
+}
+
+function openSetPlannerModal() {
+  if (!modalSetPlanner) return;
+  populatePlannerStartTracks();
+  modalSetPlanner.classList.remove("hidden");
+  runSetPlannerOptimization();
+}
+
+if (btnSetPlanner) btnSetPlanner.addEventListener("click", openSetPlannerModal);
+if (btnCloseSetPlanner) btnCloseSetPlanner.addEventListener("click", () => modalSetPlanner.classList.add("hidden"));
+if (btnRunSetPlanner) btnRunSetPlanner.addEventListener("click", runSetPlannerOptimization);
+if (plannerProfileSelect) plannerProfileSelect.addEventListener("change", runSetPlannerOptimization);
+if (plannerStartTrackSelect) plannerStartTrackSelect.addEventListener("change", runSetPlannerOptimization);
+
+if (btnExportPlannedSet) {
+  btnExportPlannedSet.addEventListener("click", () => {
+    modalSetPlanner.classList.add("hidden");
+    modalExport.classList.remove("hidden");
   });
 }
 
@@ -1985,6 +2203,7 @@ if (btnConfirmExport) {
 if (btnShortcuts) btnShortcuts.addEventListener("click", () => modalShortcuts.classList.remove("hidden"));
 if (btnCloseShortcutsModal) btnCloseShortcutsModal.addEventListener("click", () => modalShortcuts.classList.add("hidden"));
 if (btnCloseShortcutsFooter) btnCloseShortcutsFooter.addEventListener("click", () => modalShortcuts.classList.add("hidden"));
+
 
 // Continuous Draggable Scrubber & Waveform Seek
 function initSeekListeners() {
@@ -2311,6 +2530,8 @@ if (navCollection) {
   });
 }
 if (navAnalyze) navAnalyze.addEventListener("click", () => btnImport.click());
+if (navPlaylists) navPlaylists.addEventListener("click", () => openSetPlannerModal());
+if (navTags) navTags.addEventListener("click", () => modalExport.classList.remove("hidden"));
 if (navSettings) navSettings.addEventListener("click", () => modalShortcuts.classList.remove("hidden"));
 
 // BPM Calibration

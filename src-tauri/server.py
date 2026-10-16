@@ -26,9 +26,10 @@ sys.path.insert(0, os.path.join(BASE_DIR, "src-tauri"))
 import decoder
 import dsp
 import ml
-from tagger import write_id3_tags, export_rekordbox_xml, export_traktor_nml
+from tagger import write_id3_tags, export_rekordbox_xml, export_traktor_nml, export_serato_crate
 from db import DatabaseManager
 from harmonic_mixer import HarmonicMixer
+from set_planner import SetPlanner
 
 db_manager = DatabaseManager()
 ml_key_detector = ml.KeyDetector()
@@ -240,8 +241,8 @@ def process_single_file(file_path):
         file_path, file_name, file_size, duration_secs, title, artist, album, analysis_dict, cues, waveform_peaks=waveform_peaks
     )
 
-    # 9. Write ID3 Tags to File
-    write_id3_tags(file_path, bpm, camelot_key, detected_key, energy_score)
+    # 9. Write ID3 Tags & Serato Markers2 to File
+    write_id3_tags(file_path, bpm, camelot_key, detected_key, energy_score, cues=cues)
 
     processing_time = time.time() - t0
 
@@ -434,6 +435,30 @@ class AudioHarmonixHTTPHandler(BaseHTTPRequestHandler):
                 "recommendations": recommendations
             }).encode("utf-8"))
 
+        elif path == "/api/waveform_blob":
+            track_id = query.get("id", [""])[0]
+            blob = db_manager.get_waveform_blob(track_id) if track_id else None
+            if blob:
+                self._set_headers(200, "application/octet-stream")
+                self.wfile.write(blob)
+            else:
+                self._set_headers(404, "application/json")
+                self.wfile.write(json.dumps({"status": "error", "error": "Waveform BLOB not found"}).encode("utf-8"))
+
+        elif path == "/api/plan_set":
+            profile = query.get("profile", ["warmup_peak_reset"])[0]
+            max_tracks = int(query.get("max_tracks", ["12"])[0] or 12)
+            start_track_id = query.get("start_track_id", [""])[0] or None
+            all_tracks = db_manager.get_all_tracks()
+            plan_res = SetPlanner.plan_set(
+                all_tracks,
+                profile=profile,
+                max_tracks=max_tracks,
+                start_track_id=start_track_id
+            )
+            self._set_headers(200)
+            self.wfile.write(json.dumps({"status": "ok", "plan": plan_res, "profiles": SetPlanner.get_profiles()}).encode("utf-8"))
+
         elif path == "/api/batch_status":
             self._set_headers(200)
             self.wfile.write(json.dumps({"status": "ok", "batch": batch_state}).encode("utf-8"))
@@ -601,19 +626,56 @@ class AudioHarmonixHTTPHandler(BaseHTTPRequestHandler):
             self._set_headers(200)
             self.wfile.write(json.dumps({"status": "ok", "message": f"Track {track_id} deleted successfully"}).encode("utf-8"))
 
-        elif self.path == "/api/export_rekordbox":
-            out_xml = data.get("output_path", os.path.join(BASE_DIR, "rekordbox.xml"))
-            tracks = db_manager.get_all_tracks()
-            tracks_data = []
-            for t in tracks:
-                tracks_data.append({
+        elif self.path == "/api/export_rekordbox" or self.path == "/api/export_dj":
+            fmt = str(data.get("format", "rekordbox")).strip().lower()
+            default_ext = {"rekordbox": "rekordbox.xml", "traktor": "collection.nml", "serato": "AudioHarmonix.crate"}.get(fmt, "rekordbox.xml")
+            raw_out = data.get("output_path", default_ext) or default_ext
+            out_path = raw_out if os.path.isabs(raw_out) else os.path.join(BASE_DIR, raw_out)
+
+            all_tracks = db_manager.get_all_tracks()
+            track_ids = data.get("track_ids")
+            if isinstance(track_ids, list) and len(track_ids) > 0:
+                track_map = {str(t.get("id")): t for t in all_tracks}
+                selected = [track_map[str(tid)] for tid in track_ids if str(tid) in track_map]
+            else:
+                selected = all_tracks
+
+            tracks_data = [
+                {
                     "track": t,
                     "analysis": t,
                     "cues": t.get("cues", [])
-                })
-            success, msg = export_rekordbox_xml(out_xml, tracks_data)
+                }
+                for t in selected
+            ]
+
+            if fmt == "traktor":
+                success, msg = export_traktor_nml(out_path, tracks_data)
+            elif fmt == "serato":
+                success, msg = export_serato_crate(out_path, tracks_data, write_tags=True)
+            else:
+                success, msg = export_rekordbox_xml(out_path, tracks_data)
+
             self._set_headers(200 if success else 500)
-            self.wfile.write(json.dumps({"status": "ok" if success else "error", "message": msg}).encode("utf-8"))
+            self.wfile.write(json.dumps({"status": "ok" if success else "error", "message": msg, "format": fmt, "output_path": out_path}).encode("utf-8"))
+
+        elif self.path == "/api/plan_set":
+            profile = str(data.get("profile", "warmup_peak_reset")).strip()
+            max_tracks = int(data.get("max_tracks", 12) or 12)
+            start_track_id = data.get("start_track_id") or None
+            all_tracks = db_manager.get_all_tracks()
+            plan_res = SetPlanner.plan_set(
+                all_tracks,
+                profile=profile,
+                max_tracks=max_tracks,
+                start_track_id=start_track_id
+            )
+            self._set_headers(200)
+            self.wfile.write(json.dumps({
+                "status": "ok",
+                "plan": plan_res,
+                "profiles": SetPlanner.get_profiles()
+            }).encode("utf-8"))
 
         elif self.path == "/api/save_user_cues":
             track_id = data.get("track_id", "")
@@ -639,9 +701,16 @@ class AudioHarmonixHTTPHandler(BaseHTTPRequestHandler):
                     print(f"[-] Notice updating BPM: {e}")
 
             track = db_manager.get_track_by_id(track_id)
-            if bpm_val and track and os.path.exists(track.get("file_path", "")):
+            if track and os.path.exists(track.get("file_path", "")):
                 try:
-                    write_id3_tags(track["file_path"], float(bpm_val), track.get("camelot_key", ""), track.get("detected_key", ""), track.get("energy_score", 5))
+                    write_id3_tags(
+                        track["file_path"],
+                        float(bpm_val if bpm_val else track.get("bpm", 120.0)),
+                        track.get("camelot_key", ""),
+                        track.get("detected_key", ""),
+                        track.get("energy_score", 5),
+                        cues=cues
+                    )
                 except Exception:
                     pass
 
